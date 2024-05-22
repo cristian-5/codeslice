@@ -11,13 +11,12 @@ const escapedChars = {
 	'\\n': "\n", '\\t': "\t", '\\r': "\r", '\\0': "\0"
 };
 
-const types = [
-	"int", "float", "double", "char", "string", "bool", "short",
-	"void", "long", "unsigned",
-];
+const types = [ "int", "float", "char", "string", "bool" ];
 const keywords = [
+	"cout", "cin", "endl",
 	"if", "else", "while", "for", "do", "switch", "case", "default",
-	"break", "continue", "return", "using", "namespace"
+	"break", "continue", "return", "using", "namespace",
+	"true", "false",
 ];
 
 const Errors = {
@@ -30,18 +29,16 @@ const Errors = {
 	// ==== Parser errors ============================
 	"EXT": "Expected missing %",
 	"EXM": "Expected missing % \"%\"",
-	"IPD": "Invalid preprocessor directive",
-	"LIB": "Unknown library \"%\"",
-	"UNS": "Unknown namespace \"%\"",
 	// ==== Runtime errors ===========================
 	"VRD": "Variable redefinition %",
 	"UVR": "Undefined variable %",
 	"UEX": "Unexpected expression",
 	"UOB": "Unsupported binary operator '%' on % and %",
 	"UOU": "Unsupported unary operator '%' on %",
+	"NMT": "Invalid assignment of non matching types % and %",
 };
 
-class SyntaxError {
+class CodeError {
 
 	#where(position, length, code) {
 		let row = 1, col = 1, app = 0;
@@ -88,20 +85,6 @@ class SyntaxError {
 
 }
 
-class Function {
-
-	constructor(type, name, parameters, body) {
-		this.type = type;
-		this.name = name;
-		this.parameters = parameters;
-		this.body = body;
-	}
-
-	call(parameters) {
-	}
-
-}
-
 class Environment {
 	
 	constructor(parent) {
@@ -111,20 +94,20 @@ class Environment {
 
 	define(token, value) {
 		if (this.values.has(token.lexeme))
-			throw new SyntaxError("VRD", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
+			throw new CodeError("VRD", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
 	}
 
 	assign(token, value) {
 		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
 		else if (this.parent) this.parent.assign(token.lexeme, value);
-		else throw new SyntaxError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
+		else throw new CodeError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
 	}
 
 	get(token) {
 		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
 		if (this.parent) return this.parent.get(token.lexeme);
-		throw new SyntaxError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
+		throw new CodeError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
 	}
 
 }
@@ -138,10 +121,11 @@ class Value {
 		"int+int":    (a, b) => new Value(a.value + b.value, "int"),
 		"int+float":  (a, b) => new Value(a.value + b.value, "float"),
 		"int-int":    (a, b) => new Value(a.value - b.value, "int"),
+		"int-char":   (a, b) => new Value(a.value - b.value, "int"),
 		"int-float":  (a, b) => new Value(a.value - b.value, "float"),
 		"int*int":    (a, b) => new Value(a.value * b.value, "int"),
 		"int*float":  (a, b) => new Value(a.value * b.value, "float"),
-		"int/int":    (a, b) => new Value(Math.floor(a.value / b.value), "int"),
+		"int/int":    (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
 		"int/float":  (a, b) => new Value(a.value / b.value, "float"),
 		"int%int":    (a, b) => new Value(a.value % b.value, "int"),
 		"int&int":    (a, b) => new Value(a.value & b.value, "int"),
@@ -150,18 +134,19 @@ class Value {
 		"float-float": (a, b) => new Value(a.value - b.value, "float"),
 		"float*float": (a, b) => new Value(a.value * b.value, "float"),
 		"float/float": (a, b) => new Value(a.value / b.value, "float"),
+		"float/int":   (a, b) => new Value(a.value / b.value, "float"),
 		"bool&&bool": (a, b) => new Value(a.value && b.value, "bool"),
 		"bool||bool": (a, b) => new Value(a.value || b.value, "bool"),
 		"bool==bool": (a, b) => new Value(a.value === b.value, "bool"),
 		"bool!=bool": (a, b) => new Value(a.value !== b.value, "bool"),
 		"char+char": (a, b) => new Value(a.value + b.value, "char"),
-		"char+int":  (a, b) => new Value(a.value + b.value, "char"),
-		"char-int":  (a, b) => new Value(a.value - b.value, "char"),
-		"char*int":  (a, b) => new Value(a.value * b.value, "char"),
-		"char/int":  (a, b) => new Value(Math.floor(a.value / b.value), "char"),
-		"char%int":  (a, b) => new Value(a.value % b.value, "char"),
-		"int%char":  (a, b) => new Value(a.value % b.value, "char"),
-		"int/char":  (a, b) => new Value(Math.floor(a.value / b.value), "int"),
+		"char+int":  (a, b) => new Value(a.value + b.value, "int"),
+		"char-int":  (a, b) => new Value(a.value - b.value, "int"),
+		"char*int":  (a, b) => new Value(a.value * b.value, "int"),
+		"char/int":  (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
+		"char%int":  (a, b) => new Value(a.value % b.value, "int"),
+		"int%char":  (a, b) => new Value(a.value % b.value, "int"),
+		"int/char":  (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
 		"int>int":   (a, b) => new Value(a.value > b.value, "bool"),
 		"int<int":   (a, b) => new Value(a.value < b.value, "bool"),
 		"int>=int":  (a, b) => new Value(a.value >= b.value, "bool"),
@@ -212,10 +197,13 @@ class Value {
 		"float!=float": (a, b) => new Value(a.value !== b.value, "bool"),
 	};
 
-	static #prefix = {
+	static #unary = {
 		"-int": a => new Value(-a.value, "int"),
+		"-char": a => new Value(- a.value, "int"),
 		"-float": a => new Value(-a.value, "float"),
 		"!bool": a => new Value(!a.value, "bool"),
+		"~int": a => new Value(~a.value, "int"),
+		"~char": a => new Value(~a.value, "int"),
 	};
 
 	constructor(value, type = "int") {
@@ -236,15 +224,15 @@ class Value {
 		if (key in Value.#binary) return Value.#binary[key](a, b);
 		key = b.subtype + o + a.subtype;
 		if (key in Value.#binary) return Value.#binary[key](b, a);
-		throw new SyntaxError("UOB", o.position, o.lexeme.length, this.code, [
+		throw new CodeError("UOB", o.position, o.lexeme.length, this.code, [
 			o.lexeme, a.type, b.type
 		]);
 	}
 
-	static prefix(o, a) {
+	static unary(o, a) {
 		let key = o.lexeme + a.subtype;
-		if (key in Value.#prefix) return Value.#prefix[key](a);
-		throw new SyntaxError("UOU", o.position, o.lexeme.length, this.code, [
+		if (key in Value.#unary) return Value.#unary[key](a);
+		throw new CodeError("UOU", o.position, o.lexeme.length, this.code, [
 			o.lexeme, a.type
 		]);
 	}
@@ -253,7 +241,7 @@ class Value {
 
 class Interpreter {
 
-	constructor(code = "") {
+	constructor(code) {
 		this.code = code.replace(/\r/g, ""); // CRLF to LF
 		this.tokens = this.#lex();
 	}
@@ -273,8 +261,8 @@ class Interpreter {
 		if (this.#match(t, l)) return this.#previous();
 		const prev = this.#previous() || { position: 0, lexeme: "" };
 		const position = prev.position + prev.lexeme.length;
-		if (l) throw new SyntaxError("EXM", position, 1, this.code, [ t, l ]);
-		throw new SyntaxError("EXT", position, 1, this.code, [ t ]);
+		if (l) throw new CodeError("EXM", position, 1, this.code, [ t, l ]);
+		throw new CodeError("EXT", position, 1, this.code, [ t ]);
 	}
 
 	// ==== Lexer ==============================================================
@@ -302,21 +290,21 @@ class Interpreter {
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new SyntaxError("MTS", position, t.length, code);
+					if (code[i] == '\n') throw new CodeError("MTS", position, t.length, code);
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
 					position = i; i++; t = "\'";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new SyntaxError("MTC", position, t.length, code);
+					if (code[i] == '\n') throw new CodeError("MTC", position, t.length, code);
 					t += "'";
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new SyntaxError("UES", position, t.length, code);
+							if (!(c in escapedChars)) throw new CodeError("UES", position, t.length, code);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new SyntaxError("ICL", position, t.length, code);
+						} else throw new CodeError("ICL", position, t.length, code);
 					} else tokens.push({ lexeme: t, type: "char", position });
 				break;
 				default:
@@ -332,7 +320,7 @@ class Interpreter {
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
-					} else throw new SyntaxError("UNC", position, 1, code);
+					} else throw new CodeError("UNC", position, 1, code);
 					i--;
 				break;
 			}
@@ -381,90 +369,36 @@ class Interpreter {
 
 	// ==== Parser =============================================================
 
+	// <program> := { <block> }
 	#program() {
 		this.variables = new Environment();
-		this.functions = new Map(); // name: { type, parameters, body }
-		while (!this.#end()) {
-			if (this.#check("directive")) this.#directive();
-			else if (this.#check("keyword", "using")) this.#using();
-			else if (this.#check("type")) this.#declaration();
-			//else this.#function(); // or global variable declaration
-		}
+		while (!this.#end()) return this.#block();
 	}
-
-	#directive() {
-		const d = this.#consume("directive").lexeme;
-		const lib = d.match(/#\s*include\s*[<"]\s*([^\s]+)\s*[>"]\s*\n*/);
-		if (!lib) throw new SyntaxError("IPD", d.position, d.lexeme.length, this.code);
-		switch (lib[1].toLowerCase()) {
-			case "iostream": console.log("iostream"); break;
-			case "string": case "string.h": case "cstring": console.log("string"); break;
-			case "cmath": case "math.h": console.log("math"); break;
-			case "ctime": case "time.h": console.log("time"); break;
-			case "cstdlib": case "stdlib.h": console.log("stdlib"); break;
-			case "cstdio": case "stdio.h": console.log("stdio"); break;
-			default: throw new SyntaxError("LIB", d.position, d.lexeme.length, this.code, [ lib[1] ]);
-		}
-	}
-
-	#using() {
-		this.#consume("keyword", "using");
-		if (this.#match("keyword", "namespace")) {
-			const ns = this.#consume("identifier");
-			switch (ns.lexeme) {
-				case "std": console.log("using namespace std"); break;
-				default: throw new SyntaxError("UNS", ns.position, ns.lexeme.length, this.code, [ ns.lexeme ]);
-			}
-		} else {
-			const id = this.#consume("identifier");
-			if (this.#match("operator", "::")) {
-				const ns = this.#consume("identifier");
-				console.log(`using ${id.lexeme}::${ns.lexeme}`);
-			} else console.log(`using ${id.lexeme}`);
-		}
-		this.#consume("operator", ";");
-	}
-
+	// <declaration> := <type> <identifier> [ '=' <expression> ] ';'
 	#declaration() {
 		const type = this.#consume("type").lexeme;
 		const id = this.#consume("identifier").lexeme;
-		if (this.#match("operator", "(")) this.#function(type, id);
-		else {
-			if (this.#match("operator", "=")) {
-				const value = this.#expression();
-				this.variables.set(id, value);
-			}
-			this.#consume("operator", ";");
+		if (this.#match("operator", "=")) {
+			const value = this.#expression();
+			if (value.type !== type)
+				throw new CodeError("UVR", value.position, value.lexeme.length, this.code, [ id ]);
+			this.variables.set(id, value);
 		}
+		this.#consume("operator", ";");
 	}
-
-	#function(type, id) {
-		const parameters = [];
-		if (!this.#match("operator", ")")) {
-			do {
-				const ptype = this.#consume("type").lexeme;
-				const pid = this.#consume("identifier").lexeme;
-				parameters.push({ type: ptype, name: pid });
-			} while (this.#match("operator", ","));
-			this.#consume("operator", ")");
-		}
-		if (this.#match("operator", ";")) {
-			this.functions.set(new Function(type, id, parameters));
-			return;
-		}
-		this.#consume("operator", "{");
-		const body = this.#block();
-		this.functions.set(id, new Function(type, id, parameters, body));
-	}
-
+	// <block> := '{' { <statement> } '}'
 	#block() {
-		const statements = [];
-		while (!this.#end() && !this.#check("operator", "}")) {
-			statements.push(this.#statement());
-		}
-	}
+		if (this.#match("operator", '{')) {
 
+
+			this.#consume("operator", '}');
+		} else this.#statement();
+	}
+	// <statement> := <declaration> | <expression> ';'
 	#statement() {
+		if (this.#check("type")) this.#declaration();
+		else this.#expression();
+		this.#consume("operator", ";");
 		/*if (this.#check("keyword", "if"))     return this.#if();
 		if (this.#check("keyword", "while"))  return this.#while();
 		if (this.#check("keyword", "for"))    return this.#for();
@@ -474,9 +408,9 @@ class Interpreter {
 
 	// ==== Expressions ========================================================
 
-	// expression := <assignment>
+	// <expression> := <assignment>
 	#expression() { return this.#assignment(); }
-	// assignment := <identifier> ( '=' <expression> ) | <term>
+	// <assignment> := <identifier> ( '=' <expression> ) | <term>
 	#assignment() {
 		if (this.#match("identifier")) {
 			const name = this.#previous();
@@ -491,7 +425,7 @@ class Interpreter {
 			}
 		} else return this.#term();
 	}
-	// term := <factor> ( ( '+' | '-' ) <factor> )*
+	// <term> := <factor> ( ( '+' | '-' ) <factor> )*
 	#term() {
 		let e = this.#factor();
 		while (this.#match("operator", "+") || this.#match("operator", "-")) {
@@ -499,7 +433,7 @@ class Interpreter {
 		}
 		return e;
 	}
-	// factor := <prefix> ( ( '*' | '/' | '%' ) <prefix> )*
+	// <factor> := <prefix> ( ( '*' | '/' | '%' ) <prefix> )*
 	#factor() {
 		let e = this.#prefix();
 		while (this.#match("operator", "*") || this.#match("operator", "/") || this.#match("operator", "%")) {
@@ -507,12 +441,16 @@ class Interpreter {
 		}
 		return e;
 	}
+	// <prefix> := ( '+' | '-' ) <prefix> | <primary>
 	#prefix() {
 		if (this.#match("operator", "+") || this.#match("operator", "-")) {
 			return Value.unary(this.#previous().lexeme, this.#prefix());
+		} else if (this.#match("operator", "++") || this.#match("operator", "--")) {
+			// TODO: implement prefix increment and decrement;
 		}
 		return this.#primary();
 	}
+	// <primary> := '(' <expression> ')' | <identifier> | <number> | <string> | <char> | <bool>
 	#primary() {
 		if (this.#match("operator", "(")) {
 			const e = this.#expression();
@@ -522,11 +460,20 @@ class Interpreter {
 			const name = this.#advance();
 			return this.variables.get(name);
 		} else if (this.#check("number")) {
-			const n = Number(this.#advance().lexeme);
-			return n;
+			const n = this.#advance();
+			if (n.lexeme.includes('.')) return new Value(parseFloat(n.lexeme), "float");
+			return new Value(parseInt(n.lexeme), "int");
+		} else if (this.#check("string")) {
+			const s = this.#advance();
+			return new Value(s.lexeme.substring(1, s.lexeme.length - 1), "string");
+		} else if (this.#check("char")) {
+			const c = this.#advance();
+			return new Value(c.lexeme.charCodeAt(1), "char");
 		}
+		else if (this.#match("keyword", "true"))  return new Value(true,  "bool");
+		else if (this.#match("keyword", "false")) return new Value(false, "bool");
 		const p = this.#peek();
-		throw new SyntaxError("UEX", p.position, p.lexeme.length, this.code);
+		throw new CodeError("UEX", p.position, p.lexeme.length, this.code);
 	}
 
 	run() {
