@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍰</text></svg>'>
+	<title>Code SL/CE c++ Interpreter</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css">
+	<link rel="stylesheet" href="css/style.css">
+
+	<link rel="stylesheet" href="css/fontawesome.min.css">
+	<link rel="stylesheet" href="css/solid.min.css">
+
+	<link rel="stylesheet" href="css/xterm.css">
+	<script src="js/xterm.js"></script>
+	<script src="js/interpreter.js"></script>
+	<script src="js/main.js"></script>
+</head>
+<body>
+	
+	<nav>
+		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c++ Interpreter</h1>
+		<div class="cassette">
+			<button onclick="debug()"><i class="fa-solid fa-bug-slash orange"></i></button>
+			<button onclick="run()"><i class="fa-solid fa-play gray" style="margin:0 8px 0 0"></i> Run</button>
+			<button onclick="download()" disabled><i class="fa-solid fa-download green"></i></button>
+			<button onclick="settings()" disabled><i class="fa-solid fa-gear blue"></i></button>
+		</div>
+		<button onclick=""><i class="fa-solid fa-circle-half-stroke gray"></i></button>
+	</nav>
+
+	<div id="splitgrid">
+		<section id="code-box">
+			<header>
+				<div><i class="fa-solid fa-code green"></i> <span style="margin: 0 4px">Code</span></div>
+			</header>
+			<div id="monaco"></div>
+		</section>
+		<section id="view-box">
+			<header>
+				<div><i class="fa-solid fa-eye magenta"></i> <span style="margin: 0 4px">Data View</span></div>
+			</header>
+		</section>
+		<section id="term-box">
+			<header>
+				<div><i class="fa-solid fa-code blue"></i> <span style="margin: 0 4px">Console</span></div>
+			</header>
+			<pre id="terminal"></pre>
+			<pre id="console"></pre>
+		</section>
+		<div id="gutter-v" class="gutter"></div>
+		<div id="gutter-h" class="gutter"></div>
+	</div>
+	
+	<script
+		src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.5/require.min.js"
+		integrity="sha256-0SGl1PJNDyJwcV5T+weg2zpEMrh7xvlwO4oXgvZCeZk="
+		crossorigin="anonymous"
+	></script>
+	<script type="module">
+		require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.48.0/min/vs" }});
+		require([ "vs/editor/editor.main" ], function() {
+			window.editor = monaco.editor.create(document.getElementById("monaco"), {
+				value: localStorage.getItem("code") || [
+					"\n#include <iostream>\n",
+					"using namespace std;\n",
+					"int main() {",
+					"\tcout << \"Hello, world!\" << endl;",
+					"\treturn 0;",
+					"}\n"
+				].join('\n'),
+				language: "cpp",
+				codeLens: true,
+				cursorStyle: "line",
+				quickSuggestions: true,
+				contextmenu: false,
+				minimap: { enabled: false },
+				fontSize: 16,
+				automaticLayout: true,
+				theme: darkMode() ? "vs-dark" : "vs"
+			});
+			window.editor.revealLine(7);
+			window.editor.setPosition({ lineNumber: 7, column: 30 });
+		});
+
+		window.terminal = new Terminal({
+			convertEol: true, cursorBlink: true,
+			fontSize: 16, fontFamily: "monospace",
+			theme: darkMode() ? theme.dark : theme.light
+		});
+        window.terminal.open(document.getElementById('terminal'));
+		
+		import splitGrid from "https://cdn.jsdelivr.net/npm/split-grid@1.0.11/+esm";
+		window.Split = splitGrid;
+		Split({
+			columnGutters: [{
+				minSize: 100,
+				track: 1,
+				element: document.getElementById("gutter-v"),
+			}],
+			rowGutters: [{
+				minSize: 100,
+				track: 1,
+				element: document.getElementById("gutter-h"),
+			}]
+		});
+	</script>
+</body>
+</html>
