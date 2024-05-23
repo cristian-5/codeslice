@@ -265,6 +265,18 @@ class Call extends Expression {
 	}
 }
 
+class Subscript extends Expression {
+	constructor(left, index, expression) {
+		super(left.start, expression ? expression.end : index.end);
+		this.left = left;
+		this.index = index;
+		this.expression = expression;
+	}
+	execute() {
+
+	}
+}
+
 // ==== Statements =============================================================
 
 class Statement {
@@ -281,6 +293,7 @@ class Declaration extends Statement {
 		this.identifier = identifier;
 		this.type = type;
 		this.expression = expression;
+		this.size = 1;
 	}
 	execute() {
 		let value;
@@ -290,7 +303,9 @@ class Declaration extends Statement {
 				throw new CodeError(Errors.CST, this.start, this.end, Program.code, [
 					this.type.lexeme, value.type
 				]);
-		} else value = new Value(undefined, this.type.lexeme);
+		} else if (this.size > 1) {
+			value = new Value(new Array(this.size), this.type.lexeme);
+		}
 		Environment.current.define(this.identifier, value);
 	}
 }

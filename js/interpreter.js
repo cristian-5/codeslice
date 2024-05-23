@@ -238,7 +238,13 @@ class Interpreter {
 		const type = this.#consume("type");
 		const id = this.#consume("identifier");
 		if (this.#match("operator", '='))
-			 return new Declaration(type, id, this.#expression());
+			return new Declaration(type, id, this.#expression());
+		else if (this.#match("operator", '[')) {
+			const size = this.#expression();
+			this.#consume("operator", ']');
+			const a = new Declaration(type, id);
+			a.size = size;
+		}
 		else return new Declaration(type, id);
 	}
 	// <block> := '{' { <statement> } '}'
@@ -371,7 +377,7 @@ class Interpreter {
 			return new PrefixExpression(this.#previous(), this.#prefix());
 		return this.#call();
 	}
-	// <call> := <primary> ( '(' <arguments>? ')' )*
+	// <call> := <subscript> ( '(' <arguments>? ')' )*
 	// <arguments> := <expression> ( ',' <expression> )*
 	#call() {
 		let e = this.#primary();
@@ -382,6 +388,18 @@ class Interpreter {
 				while (this.#match("operator", ","));
 			}
 			e = new Call(e, lpar, this.#consume("operator", ")"), args);
+		}
+		return e;
+	}
+	// <subscript> := <primary> ('[' <expression> ']') [ '=' <expression> ]
+	#subscript() {
+		let e = this.#primary();
+		if (this.#match("operator", "[")) {
+			const index = this.#expression();
+			this.#consume("operator", "]");
+			if (this.#match("operator", "="))
+				e = new Subscript(e, index, this.#expression());
+			else e = new Subscript(e, index);
 		}
 		return e;
 	}
