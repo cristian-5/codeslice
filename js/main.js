@@ -24,13 +24,12 @@ function run() {
 	const code = editor.getValue();
 	localStorage.setItem("code", code);
 	terminal.reset();
-
-	
 	try {
+		Cout.print = text => terminal.write(text);
 		const interpreter = new Interpreter(code);
-		console.log(interpreter.run());
+		interpreter.run();
 	} catch (e) {
+		if (!(e instanceof CodeError)) throw e;
 		terminal.write(e.message);
 	}
-
 }

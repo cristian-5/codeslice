@@ -16,30 +16,36 @@ const keywords = [
 	"cout", "cin",
 	"if", "else", "while", "for", "do", "switch", "case", "default",
 	"break", "continue", "return", "using", "namespace",
-	"true", "false",
 ];
 
-const Errors = {
+const EN_Errors = {
 	// ==== Lexer errors =============================
-	"MTC": "Missing terminating ' character",
-	"MTS": "Missing terminating \" character",
-	"UES": "Unknown escape sequence",
-	"ICL": "Invalid character literal",
-	"UNC": "Unexpected character",
+	MTC: "Missing terminating ' character",
+	MTS: "Missing terminating \" character",
+	UES: "Unknown escape sequence",
+	ICL: "Invalid character literal",
+	UNC: "Unexpected character",
 	// ==== Parser errors ============================
-	"EXT": "Expected missing %",
-	"EXM": "Expected missing % \"%\"",
+	EXT: "Expected missing %",
+	EXM: "Expected missing % \"%\"",
 	// ==== Runtime errors ===========================
-	"VRD": "Variable redefinition %",
-	"UVR": "Undefined variable %",
-	"UEX": "Unexpected expression",
-	"UOB": "Unsupported binary operator '%' on % and %",
-	"UOU": "Unsupported unary operator '%' on %",
-	"NMT": "Invalid assignment of non matching types % and %",
-	"IAT": "Invalid assignment to %",
-	"COU": "Expected \"<<\" after cout",
-	"CIN": "Expected \">>\" after cin",
+	VRD: "Variable redefinition %",
+	UVR: "Undefined variable %",
+	UEX: "Unexpected expression",
+	UOB: "Unsupported binary infix operator % on % and %",
+	UPO: "Unsupported unary prefix operator % on %",
+	UPP: "Unsupported unary postfix operator % on %",
+	NMT: "Invalid assignment of non matching types % and %",
+	IAT: "Invalid assignment to %",
+	COU: "Expected << after cout",
+	CIN: "Expected >> after cin",
+	LIT: "Invalid literal %",
+	CII: "Invalid cin input for type %",
+	CIT: "Invalid cin type %",
+	CST: "Incompatible types % and % require casting",
 };
+
+let Errors = EN_Errors;
 
 class CodeError {
 
@@ -82,162 +88,8 @@ class CodeError {
 
 	constructor(message, position, length, code, parameters) {
 		this.position = this.#where(position, length, code);
-		message = parameters ? this.#unravel(Errors[message], parameters) : Errors[message];
+		if (parameters) message = this.#unravel(message, parameters);
 		this.message = this.#error(message, this.#line(position, code));
-	}
-
-}
-
-class Environment {
-	
-	constructor(parent) {
-		this.parent = parent;
-		this.values = new Map();
-	}
-
-	define(token, value) {
-		if (this.values.has(token.lexeme))
-			throw new CodeError("VRD", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
-		this.values.set(token.lexeme, value);
-	}
-
-	assign(token, value) {
-		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
-		else if (this.parent) this.parent.assign(token.lexeme, value);
-		else throw new CodeError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
-	}
-
-	get(token) {
-		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
-		if (this.parent) return this.parent.get(token.lexeme);
-		throw new CodeError("UVR", token.position, token.lexeme.length, this.code, [ token.lexeme ]);
-	}
-
-}
-
-class Value {
-
-	static #binary = {
-		"string+string": (a, b) => new Value(a.value + b.value, "string"),
-		"string==string": (a, b) => new Value(a.value === b.value, "bool"),
-		"string!=string": (a, b) => new Value(a.value !== b.value, "bool"),
-		"int+int":    (a, b) => new Value(a.value + b.value, "int"),
-		"int+float":  (a, b) => new Value(a.value + b.value, "float"),
-		"int-int":    (a, b) => new Value(a.value - b.value, "int"),
-		"int-char":   (a, b) => new Value(a.value - b.value, "int"),
-		"int-float":  (a, b) => new Value(a.value - b.value, "float"),
-		"int*int":    (a, b) => new Value(a.value * b.value, "int"),
-		"int*float":  (a, b) => new Value(a.value * b.value, "float"),
-		"int/int":    (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
-		"int/float":  (a, b) => new Value(a.value / b.value, "float"),
-		"int%int":    (a, b) => new Value(a.value % b.value, "int"),
-		"int&int":    (a, b) => new Value(a.value & b.value, "int"),
-		"int|int":    (a, b) => new Value(a.value | b.value, "int"),
-		"float+float": (a, b) => new Value(a.value + b.value, "float"),
-		"float-float": (a, b) => new Value(a.value - b.value, "float"),
-		"float*float": (a, b) => new Value(a.value * b.value, "float"),
-		"float/float": (a, b) => new Value(a.value / b.value, "float"),
-		"float/int":   (a, b) => new Value(a.value / b.value, "float"),
-		"bool&&bool": (a, b) => new Value(a.value && b.value, "bool"),
-		"bool||bool": (a, b) => new Value(a.value || b.value, "bool"),
-		"bool==bool": (a, b) => new Value(a.value === b.value, "bool"),
-		"bool!=bool": (a, b) => new Value(a.value !== b.value, "bool"),
-		"char+char": (a, b) => new Value(a.value + b.value, "char"),
-		"char+int":  (a, b) => new Value(a.value + b.value, "int"),
-		"char-int":  (a, b) => new Value(a.value - b.value, "int"),
-		"char*int":  (a, b) => new Value(a.value * b.value, "int"),
-		"char/int":  (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
-		"char%int":  (a, b) => new Value(a.value % b.value, "int"),
-		"int%char":  (a, b) => new Value(a.value % b.value, "int"),
-		"int/char":  (a, b) => new Value(Math.trunc(a.value / b.value), "int"),
-		"int>int":   (a, b) => new Value(a.value > b.value, "bool"),
-		"int<int":   (a, b) => new Value(a.value < b.value, "bool"),
-		"int>=int":  (a, b) => new Value(a.value >= b.value, "bool"),
-		"int<=int":  (a, b) => new Value(a.value <= b.value, "bool"),
-		"int==int":  (a, b) => new Value(a.value === b.value, "bool"),
-		"int!=int":  (a, b) => new Value(a.value !== b.value, "bool"),
-		"char>char": (a, b) => new Value(a.value > b.value, "bool"),
-		"char<char": (a, b) => new Value(a.value < b.value, "bool"),
-		"char>=char": (a, b) => new Value(a.value >= b.value, "bool"),
-		"char<=char": (a, b) => new Value(a.value <= b.value, "bool"),
-		"char==char": (a, b) => new Value(a.value === b.value, "bool"),
-		"char!=char": (a, b) => new Value(a.value !== b.value, "bool"),
-		"char>int":  (a, b) => new Value(a.value > b.value, "bool"),
-		"char<int":  (a, b) => new Value(a.value < b.value, "bool"),
-		"char>=int": (a, b) => new Value(a.value >= b.value, "bool"),
-		"char<=int": (a, b) => new Value(a.value <= b.value, "bool"),
-		"char==int": (a, b) => new Value(a.value === b.value, "bool"),
-		"char!=int": (a, b) => new Value(a.value !== b.value, "bool"),
-		"int>char":  (a, b) => new Value(a.value > b.value, "bool"),
-		"int<char":  (a, b) => new Value(a.value < b.value, "bool"),
-		"int>=char": (a, b) => new Value(a.value >= b.value, "bool"),
-		"int<=char": (a, b) => new Value(a.value <= b.value, "bool"),
-		"int==char": (a, b) => new Value(a.value === b.value, "bool"),
-		"int!=char": (a, b) => new Value(a.value !== b.value, "bool"),
-		"int>float":  (a, b) => new Value(a.value > b.value, "bool"),
-		"int<float":  (a, b) => new Value(a.value < b.value, "bool"),
-		"int>=float": (a, b) => new Value(a.value >= b.value, "bool"),
-		"int<=float": (a, b) => new Value(a.value <= b.value, "bool"),
-		"int==float": (a, b) => new Value(a.value === b.value, "bool"),
-		"int!=float": (a, b) => new Value(a.value !== b.value, "bool"),
-		"float>int":  (a, b) => new Value(a.value > b.value, "bool"),
-		"float<int":  (a, b) => new Value(a.value < b.value, "bool"),
-		"float>=int": (a, b) => new Value(a.value >= b.value, "bool"),
-		"float<=int": (a, b) => new Value(a.value <= b.value, "bool"),
-		"float==int": (a, b) => new Value(a.value === b.value, "bool"),
-		"float!=int": (a, b) => new Value(a.value !== b.value, "bool"),
-		"float>char":  (a, b) => new Value(a.value > b.value, "bool"),
-		"float<char":  (a, b) => new Value(a.value < b.value, "bool"),
-		"float>=char": (a, b) => new Value(a.value >= b.value, "bool"),
-		"float<=char": (a, b) => new Value(a.value <= b.value, "bool"),
-		"float==char": (a, b) => new Value(a.value === b.value, "bool"),
-		"float!=char": (a, b) => new Value(a.value !== b.value, "bool"),
-		"float>float":  (a, b) => new Value(a.value > b.value, "bool"),
-		"float<float":  (a, b) => new Value(a.value < b.value, "bool"),
-		"float>=float": (a, b) => new Value(a.value >= b.value, "bool"),
-		"float<=float": (a, b) => new Value(a.value <= b.value, "bool"),
-		"float==float": (a, b) => new Value(a.value === b.value, "bool"),
-		"float!=float": (a, b) => new Value(a.value !== b.value, "bool"),
-	};
-
-	static #unary = {
-		"-int": a => new Value(-a.value, "int"),
-		"-char": a => new Value(- a.value, "int"),
-		"-float": a => new Value(-a.value, "float"),
-		"!bool": a => new Value(!a.value, "bool"),
-		"~int": a => new Value(~a.value, "int"),
-		"~char": a => new Value(~a.value, "int"),
-	};
-
-	constructor(value, type = "int") {
-		this.value = value;
-		this.type = type;
-		switch (type) {
-			case "long": case "short": case "unsigned":
-				this.subtype = "int";
-			break;
-			case "float": case "double":
-				this.subtype = "float";
-			default: this.subtype = type;
-		}
-	}
-
-	static binary(a, o, b) {
-		let key = a.subtype + o.lexeme + b.subtype;
-		if (key in Value.#binary) return Value.#binary[key](a, b);
-		key = b.subtype + o + a.subtype;
-		if (key in Value.#binary) return Value.#binary[key](b, a);
-		throw new CodeError("UOB", o.position, o.lexeme.length, this.code, [
-			o.lexeme, a.type, b.type
-		]);
-	}
-
-	static unary(o, a) {
-		let key = o.lexeme + a.subtype;
-		if (key in Value.#unary) return Value.#unary[key](a);
-		throw new CodeError("UOU", o.position, o.lexeme.length, this.code, [
-			o.lexeme, a.type
-		]);
 	}
 
 }
@@ -267,8 +119,8 @@ class Interpreter {
 		if (this.#match(t, l)) return this.#previous();
 		const prev = this.#previous() || { position: 0, lexeme: "" };
 		const position = prev.position + prev.lexeme.length;
-		if (l) throw new CodeError("EXM", position, 1, this.code, [ t, l ]);
-		throw new CodeError("EXT", position, 1, this.code, [ t ]);
+		if (l) throw new CodeError(Errors.EXM, position, 1, this.code, [ t, l ]);
+		throw new CodeError(Errors.EXT, position, 1, this.code, [ t ]);
 	}
 
 	// ==== Lexer ==============================================================
@@ -296,21 +148,21 @@ class Interpreter {
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError("MTS", position, t.length, code);
+					if (code[i] == '\n') throw new CodeError(Errors.MTS, position, t.length, code);
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
 					position = i; i++; t = "\'";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError("MTC", position, t.length, code);
+					if (code[i] == '\n') throw new CodeError(Errors.MTC, position, t.length, code);
 					t += "'";
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new CodeError("UES", position, t.length, code);
+							if (!(c in escapedChars)) throw new CodeError(Errors.UES, position, t.length, code);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new CodeError("ICL", position, t.length, code);
+						} else throw new CodeError(Errors.ICL, position, t.length, code);
 					} else tokens.push({ lexeme: t, type: "char", position });
 				break;
 				default:
@@ -326,7 +178,7 @@ class Interpreter {
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
-					} else throw new CodeError("UNC", position, 1, code);
+					} else throw new CodeError(Errors.UNC, position, 1, code);
 					i--;
 				break;
 			}
@@ -377,27 +229,33 @@ class Interpreter {
 
 	// <program> := { <block> }
 	#program() {
-		while (!this.#end()) return this.#block();
+		let e = [];
+		while (!this.#end()) e.push(this.#block());
+		return new Program(e, this.code);
 	}
-	// <declaration> := <type> <identifier> [ '=' <expression> ] ';'
+	// <declaration> := <type> <identifier> [ '=' <expression> ]
 	#declaration() {
 		const type = this.#consume("type");
 		const id = this.#consume("identifier");
 		if (this.#match("operator", '='))
-			return new Declaration(type, id, this.#expression());
-		this.#consume("operator", ";");
+			 return new Declaration(type, id, this.#expression());
+		else return new Declaration(type, id);
 	}
 	// <block> := '{' { <statement> } '}'
 	#block() {
 		const statements = [];
 		if (this.#match("operator", '{')) {
+			const lbrace = this.#previous();
 			while (!this.#check("operator", '}') && !this.#end())
 				statements.push(this.#statement());
-			this.#consume("operator", '}');
-			return new Block(statements);
+			const rbrace = this.#consume("operator", '}');
+			return new Block(lbrace, statements, rbrace);
 		} else return this.#statement();
 	}
-	// <statement> := <declaration> | <expression> ';'
+	// <statement> := <declaration>
+	//              | <cout> | <cin>
+	//			    | <if>
+	//              | <expression> ';'
 	#statement() {
 		let e;
 		if (this.#check("type")) {
@@ -406,36 +264,44 @@ class Interpreter {
 		}
 		else if (this.#check("keyword", "cout")) e = this.#cout();
 		else if (this.#check("keyword", "cin"))  e = this.#cin();
+		else if (this.#check("keyword", "if"))   e = this.#if();
 		else {
 			e = new Instruction(this.#expression());
 			this.#consume("operator", ";");
 		}
 		return e;
-		/*if (this.#check("keyword", "if"))     return this.#if();
-		if (this.#check("keyword", "while"))  return this.#while();
-		if (this.#check("keyword", "for"))    return this.#for();
-		if (this.#check("keyword", "do"))     return this.#do();
-		if (this.#check("keyword", "switch")) return this.#switch();*/
 	}
 
-	// <cout> := 'cout' << <expression> ( << <expression> )*
+	// <if> := "if" '(' <expression> ')' <block> [ "else" <block> ]
+	#if() {
+		const i = this.#consume("keyword", "if");
+		this.#consume("operator", "(");
+		const condition = this.#expression();
+		this.#consume("operator", ")");
+		const then = this.#block();
+		let els = null;
+		if (this.#match("keyword", "else")) els = this.#block();
+		return new If(i, condition, then, els);
+	}
+
+	// <cout> := "cout" << <expression> ( << <expression> )*
 	#cout() {
 		const c = this.#consume("keyword", "cout");
 		if (!this.#check("operator", "<<")) {
 			const p = this.#peek();
-			throw new CodeError("COU", p.position, p.lexeme.length, this.code);
+			throw new CodeError(Errors.COU, p.position, p.lexeme.length, this.code);
 		}
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
 		this.#consume("operator", ";");
 		return new Cout(c, e);
 	}
-	// <cin> := 'cin' >> <identifier> ( >> <identifier> )*
+	// <cin> := "cin" >> <identifier> ( >> <identifier> )*
 	#cin() {
 		const c = this.#consume("keyword", "cin");
 		if (!this.#match("operator", ">>")) {
 			const p = this.#peek();
-			throw new CodeError("CIN", p.position, p.lexeme.length, this.code);
+			throw new CodeError(Errors.CIN, p.position, p.lexeme.length, this.code);
 		}
 		let e = [];
 		while (this.#match("operator", ">>")) e.push(this.#consume("identifier"));
@@ -454,7 +320,7 @@ class Interpreter {
 			const op = this.#previous();
 			const value = this.#assignment();
 			if (e instanceof Identifier) return new Assignment(e, op, value);
-			throw new CodeError("IAT", e.position, e.lexeme.length, this.code, [ e.lexeme ]);
+			throw new CodeError(Errors.IAT, e.position, e.lexeme.length, this.code, [ e.lexeme ]);
 		} else return e;
 	}
 	// <logic_or> := <logic_and> ( "||" <logic_and> )*
@@ -536,18 +402,16 @@ class Interpreter {
 			return new Literal(this.#advance(), "string");
 		else if (this.#check("char"))
 			return new Literal(this.#advance(), "char");
-		else if (this.#match("keyword", [ "true", "false" ]))
-			return new Literal(this.#advance(), "bool");
 		const p = this.#peek();
-		throw new CodeError("UEX", p.position, p.lexeme.length, this.code);
+		throw new CodeError(Errors.UEX, p.position, p.lexeme.length, this.code);
 	}
+
+	// ==== Interpreter ========================================================
 
 	run() {
 		if (this.tokens.length === 0) return;
 		this.current = 0;
-		
-
-		return this.#program();
+		this.#program().execute();
 	}
 
 }

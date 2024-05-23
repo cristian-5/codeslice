@@ -60,6 +60,8 @@
 	<script type="module">
 		require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.48.0/min/vs" }});
 		require([ "vs/editor/editor.main" ], function() {
+			const cppModel = monaco.editor.createModel("");
+			cppModel.updateOptions({ insertSpaces: false, tabSize: 4 });
 			window.editor = monaco.editor.create(document.getElementById("monaco"), {
 				value: localStorage.getItem("code") || [
 					"\n#include <iostream>\n",
@@ -77,7 +79,11 @@
 				minimap: { enabled: false },
 				fontSize: 16,
 				automaticLayout: true,
+				insertSpaces: false,
 				theme: darkMode() ? "vs-dark" : "vs"
+			});
+			window.editor.getModel().updateOptions({
+				insertSpaces: false, tabSize: 4,
 			});
 			window.editor.revealLine(7);
 			window.editor.setPosition({ lineNumber: 7, column: 30 });
