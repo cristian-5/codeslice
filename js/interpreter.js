@@ -13,7 +13,7 @@ const escapedChars = {
 
 const types = [ "int", "float", "char", "string", "bool" ];
 const keywords = [
-	"cout", "cin", "endl",
+	"cout", "cin",
 	"if", "else", "while", "for", "do", "switch", "case", "default",
 	"break", "continue", "return", "using", "namespace",
 	"true", "false",
@@ -36,6 +36,9 @@ const Errors = {
 	"UOB": "Unsupported binary operator '%' on % and %",
 	"UOU": "Unsupported unary operator '%' on %",
 	"NMT": "Invalid assignment of non matching types % and %",
+	"IAT": "Invalid assignment to %",
+	"COU": "Expected \"<<\" after cout",
+	"CIN": "Expected \">>\" after cin",
 };
 
 class CodeError {
@@ -253,8 +256,11 @@ class Interpreter {
 	#check(type, lexeme) {
 		if (this.#end()) return false;
 		const p = this.#peek();
-		if (lexeme) return p.type === type && p.lexeme === lexeme;
-		else return p.type === type;
+		if (lexeme) {
+			if (lexeme instanceof Array)
+				 return p.type === type && lexeme.includes(p.lexeme);
+			else return p.type === type && p.lexeme === lexeme;
+		} else return p.type === type;
 	}
 	#match(t, l) { return this.#check(t, l) ? !!this.#advance() : false; }
 	#consume(t, l) {
@@ -371,34 +377,40 @@ class Interpreter {
 
 	// <program> := { <block> }
 	#program() {
-		this.variables = new Environment();
 		while (!this.#end()) return this.#block();
 	}
 	// <declaration> := <type> <identifier> [ '=' <expression> ] ';'
 	#declaration() {
-		const type = this.#consume("type").lexeme;
-		const id = this.#consume("identifier").lexeme;
-		if (this.#match("operator", "=")) {
-			const value = this.#expression();
-			if (value.type !== type)
-				throw new CodeError("UVR", value.position, value.lexeme.length, this.code, [ id ]);
-			this.variables.set(id, value);
-		}
+		const type = this.#consume("type");
+		const id = this.#consume("identifier");
+		if (this.#match("operator", '='))
+			return new Declaration(type, id, this.#expression());
 		this.#consume("operator", ";");
 	}
 	// <block> := '{' { <statement> } '}'
 	#block() {
+		const statements = [];
 		if (this.#match("operator", '{')) {
-
-
+			while (!this.#check("operator", '}') && !this.#end())
+				statements.push(this.#statement());
 			this.#consume("operator", '}');
-		} else this.#statement();
+			return new Block(statements);
+		} else return this.#statement();
 	}
 	// <statement> := <declaration> | <expression> ';'
 	#statement() {
-		if (this.#check("type")) this.#declaration();
-		else this.#expression();
-		this.#consume("operator", ";");
+		let e;
+		if (this.#check("type")) {
+			e = this.#declaration();
+			this.#consume("operator", ";");
+		}
+		else if (this.#check("keyword", "cout")) e = this.#cout();
+		else if (this.#check("keyword", "cin"))  e = this.#cin();
+		else {
+			e = new Instruction(this.#expression());
+			this.#consume("operator", ";");
+		}
+		return e;
 		/*if (this.#check("keyword", "if"))     return this.#if();
 		if (this.#check("keyword", "while"))  return this.#while();
 		if (this.#check("keyword", "for"))    return this.#for();
@@ -406,72 +418,126 @@ class Interpreter {
 		if (this.#check("keyword", "switch")) return this.#switch();*/
 	}
 
+	// <cout> := 'cout' << <expression> ( << <expression> )*
+	#cout() {
+		const c = this.#consume("keyword", "cout");
+		if (!this.#check("operator", "<<")) {
+			const p = this.#peek();
+			throw new CodeError("COU", p.position, p.lexeme.length, this.code);
+		}
+		let e = [];
+		while (this.#match("operator", "<<")) e.push(this.#expression());
+		this.#consume("operator", ";");
+		return new Cout(c, e);
+	}
+	// <cin> := 'cin' >> <identifier> ( >> <identifier> )*
+	#cin() {
+		const c = this.#consume("keyword", "cin");
+		if (!this.#match("operator", ">>")) {
+			const p = this.#peek();
+			throw new CodeError("CIN", p.position, p.lexeme.length, this.code);
+		}
+		let e = [];
+		while (this.#match("operator", ">>")) e.push(this.#consume("identifier"));
+		this.#consume("operator", ";");
+		return new Cin(c, e);
+	}
+
 	// ==== Expressions ========================================================
 
 	// <expression> := <assignment>
 	#expression() { return this.#assignment(); }
-	// <assignment> := <identifier> ( '=' <expression> ) | <term>
+	// <assignment> := <identifier> ( '=' <assignment> ) | <logic_or>
 	#assignment() {
-		if (this.#match("identifier")) {
-			const name = this.#previous();
-			if (this.#check("operator", "=")) {
-				this.#advance();
-				const value = this.#expression();
-				this.variables.assign(name, value);
-				return value;
-			} else { // if it's not an assignment, it's a term
-				this.current--;
-				return this.#term();
-			}
-		} else return this.#term();
+		let e = this.#logic_or();
+		if (this.#match("operator", [ '=', "+=", "-=", "*=", "/=", "%=" ])) {
+			const op = this.#previous();
+			const value = this.#assignment();
+			if (e instanceof Identifier) return new Assignment(e, op, value);
+			throw new CodeError("IAT", e.position, e.lexeme.length, this.code, [ e.lexeme ]);
+		} else return e;
 	}
-	// <term> := <factor> ( ( '+' | '-' ) <factor> )*
+	// <logic_or> := <logic_and> ( "||" <logic_and> )*
+	#logic_or() {
+		let e = this.#logic_and();
+		while (this.#match("operator", "||"))
+			e = new InfixExpression(e, this.#previous(), this.#logic_and());
+		return e;
+	}
+	// <logic_and> := <equality> ( "&&" <equality> )*
+	#logic_and() {
+		let e = this.#equality();
+		while (this.#match("operator", "&&"))
+			e = new InfixExpression(e, this.#previous(), this.#equality());
+		return e;
+	}
+	// <equality> := <comparison> ( ( "==" | "!=" ) <comparison> )*
+	#equality() {
+		let e = this.#comparison();
+		while (this.#match("operator", [ "==", "!=" ]))
+			e = new InfixExpression(e, this.#previous(), this.#comparison());
+		return e;
+	}
+	// <comparison> := <term> ( ( '>' | '<' | ">=" | "<=" ) <term> )*
+	#comparison() {
+		let e = this.#term();
+		while (this.#match("operator", [ '>', '<', ">=", "<=" ]))
+			e = new InfixExpression(e, this.#previous(), this.#term());
+		return e;
+	}
+	// <term> := <factor> ( ( '+' | '-' | '|' ) <factor> )*
 	#term() {
 		let e = this.#factor();
-		while (this.#match("operator", "+") || this.#match("operator", "-")) {
-			e = Value.binary(e, this.#previous().lexeme, this.#factor());
-		}
+		while (this.#match("operator", [ '+', '-', '|' ]))
+			e = new InfixExpression(e, this.#previous(), this.#factor());
 		return e;
 	}
-	// <factor> := <prefix> ( ( '*' | '/' | '%' ) <prefix> )*
+	// <factor> := <prefix> ( ( '*' | '/' | '%' | '&' ) <prefix> )*
 	#factor() {
 		let e = this.#prefix();
-		while (this.#match("operator", "*") || this.#match("operator", "/") || this.#match("operator", "%")) {
-			e = Value.binary(e, this.#previous().lexeme, this.#prefix());
+		while (this.#match("operator", [ '*', '/', '%', '&' ]))
+			e = new InfixExpression(e, this.#previous(), this.#prefix());
+		return e;
+	}
+	// <prefix> := ( '!', '+' | '-' | '~' | "++" | "--") <prefix> | <call>
+	#prefix() {
+		if (this.#match("operator", [ '!', '+', '-', '~', "++", "--" ]))
+			return new PrefixExpression(this.#previous(), this.#prefix());
+		return this.#call();
+	}
+	// <call> := <primary> ( '(' <arguments>? ')' )*
+	// <arguments> := <expression> ( ',' <expression> )*
+	#call() {
+		let e = this.#primary();
+		while (this.#match("operator", "(")) {
+			const lpar = this.#previous(), args = [];
+			if (!this.#check("operator", ")")) {
+				do args.push(this.#expression());
+				while (this.#match("operator", ","));
+			}
+			e = new Call(e, lpar, this.#consume("operator", ")"), args);
 		}
 		return e;
 	}
-	// <prefix> := ( '+' | '-' ) <prefix> | <primary>
-	#prefix() {
-		if (this.#match("operator", "+") || this.#match("operator", "-")) {
-			return Value.unary(this.#previous().lexeme, this.#prefix());
-		} else if (this.#match("operator", "++") || this.#match("operator", "--")) {
-			// TODO: implement prefix increment and decrement;
-		}
-		return this.#primary();
-	}
-	// <primary> := '(' <expression> ')' | <identifier> | <number> | <string> | <char> | <bool>
+	// <primary> := '(' <expression> ')' | <postfix> | <number> | <string> | <char> | <bool>
 	#primary() {
 		if (this.#match("operator", "(")) {
 			const e = this.#expression();
 			this.#consume("operator", ")");
 			return e;
-		} else if (this.#check("identifier")) {
-			const name = this.#advance();
-			return this.variables.get(name);
 		} else if (this.#check("number")) {
 			const n = this.#advance();
-			if (n.lexeme.includes('.')) return new Value(parseFloat(n.lexeme), "float");
-			return new Value(parseInt(n.lexeme), "int");
-		} else if (this.#check("string")) {
-			const s = this.#advance();
-			return new Value(s.lexeme.substring(1, s.lexeme.length - 1), "string");
-		} else if (this.#check("char")) {
-			const c = this.#advance();
-			return new Value(c.lexeme.charCodeAt(1), "char");
+			if (n.lexeme.includes('.')) return new Literal(n, "float");
+			return new Literal(n, "int");
 		}
-		else if (this.#match("keyword", "true"))  return new Value(true,  "bool");
-		else if (this.#match("keyword", "false")) return new Value(false, "bool");
+		else if (this.#check("identifier"))
+			return new Identifier(this.#advance());
+		else if (this.#check("string"))
+			return new Literal(this.#advance(), "string");
+		else if (this.#check("char"))
+			return new Literal(this.#advance(), "char");
+		else if (this.#match("keyword", [ "true", "false" ]))
+			return new Literal(this.#advance(), "bool");
 		const p = this.#peek();
 		throw new CodeError("UEX", p.position, p.lexeme.length, this.code);
 	}
@@ -481,7 +547,7 @@ class Interpreter {
 		this.current = 0;
 		
 
-		this.#program();
+		return this.#program();
 	}
 
 }

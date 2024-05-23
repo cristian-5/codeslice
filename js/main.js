@@ -28,7 +28,7 @@ function run() {
 	
 	try {
 		const interpreter = new Interpreter(code);
-		interpreter.run();
+		console.log(interpreter.run());
 	} catch (e) {
 		terminal.write(e.message);
 	}
