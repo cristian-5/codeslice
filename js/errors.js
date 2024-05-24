@@ -57,6 +57,7 @@ const EN_Errors = {
 	EXT: "Expected missing %",
 	EXM: "Expected missing % \"%\"",
 	// ==== Runtime errors ===========================
+	DBZ: "Division by zero",
 	VRD: "Variable redefinition %",
 	UVR: "Undefined variable %",
 	UEX: "Unexpected expression",

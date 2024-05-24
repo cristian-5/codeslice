@@ -203,6 +203,8 @@ class InfixExpression extends Expression {
 	}
 	execute() {
 		const l = this.left.execute(), r = this.right.execute();
+		if ([ '/', '%' ].includes(this.operator.lexeme) && r.value === 0)
+			throw new CodeError(Errors.DBZ, this.right.start, this.right.end - this.right.start, Program.code);
 		let key = l.type + this.operator.lexeme + r.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](l, r);
