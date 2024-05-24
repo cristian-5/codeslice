@@ -305,7 +305,7 @@ class Declaration extends Statement {
 				]);
 		} else if (this.size > 1) {
 			value = new Value(new Array(this.size), this.type.lexeme);
-		}
+		} else value = new Value(undefined, this.type.lexeme);
 		Environment.current.define(this.identifier, value);
 	}
 }
@@ -348,17 +348,14 @@ class If extends Statement {
 
 class Cout extends Statement {
 	static print = console.log;
-	static last = "";
 	constructor(c, expressions) {
 		super(expressions[0].start, expressions[expressions.length - 1].end);
 		this.expressions = expressions;
 		this.c = c;
 	}
 	execute() { // TODO: fix cout of non-initialized variables
-		let out = "";
-		for (const e of this.expressions) out += e.execute().value.toString();
-		Cout.print(out);
-		Cout.last = out.split("\n").pop();
+		for (const e of this.expressions)
+			Cout.print(e.execute().value.toString());
 	}
 }
 
@@ -370,7 +367,7 @@ class Cin extends Statement {
 	}
 	execute() { // TODO: fix cin with terminal
 		for (const e of this.expressions) {
-			const value = prompt(Cout.last);
+			const value = prompt();
 			const id = Environment.current.get(e.name);
 			switch (id.type) {
 				case "int":
