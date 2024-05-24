@@ -69,7 +69,7 @@ class Interpreter {
 					} else if (code[i + 1] === '*') {
 						i += 2;
 						while (i < code.length && !(code[i - 1] === '*' && code[i] === '/')) i++;
-						if (i === code.length) throw new CodeError(Errors.MTC, position, 2, code);
+						if (i === code.length) throw new CodeError(Errors.MTC, position, 2);
 						i++;
 					} else tokens.push({ lexeme: code[i], type: "operator", position });
 				break;
@@ -83,21 +83,21 @@ class Interpreter {
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Errors.MTS, position, t.length, code);
+					if (code[i] == '\n') throw new CodeError(Errors.MTS, position, t.length);
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
 					position = i; i++; t = "\'";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Errors.MTC, position, t.length, code);
+					if (code[i] == '\n') throw new CodeError(Errors.MTC, position, t.length);
 					t += "'";
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new CodeError(Errors.UES, position, t.length, code);
+							if (!(c in escapedChars)) throw new CodeError(Errors.UES, position, t.length);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new CodeError(Errors.ICL, position, t.length, code);
+						} else throw new CodeError(Errors.ICL, position, t.length);
 					} else tokens.push({ lexeme: t, type: "char", position });
 				break;
 				default:
@@ -113,7 +113,7 @@ class Interpreter {
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
-					} else throw new CodeError(Errors.UNC, position, 1, code);
+					} else throw new CodeError(Errors.UNC, position, 1);
 					i--;
 				break;
 			}
@@ -231,7 +231,7 @@ class Interpreter {
 		const c = this.#consume("keyword", "cout");
 		if (!this.#check("operator", "<<")) {
 			const p = this.#peek();
-			throw new CodeError(Errors.COU, p.position, p.lexeme.length, this.code);
+			throw new CodeError(Errors.COU, p.position, p.lexeme.length);
 		}
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
@@ -243,13 +243,13 @@ class Interpreter {
 		const c = this.#consume("keyword", "cin");
 		if (!this.#check("operator", ">>")) {
 			const p = this.#peek();
-			throw new CodeError(Errors.CIN, p.position, p.lexeme.length, this.code);
+			throw new CodeError(Errors.CIN, p.position, p.lexeme.length);
 		}
 		let e = [];
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();
 			if (!(id instanceof Identifier))
-				throw new CodeError(Errors.CIX, id.position, id.lexeme.length, this.code);
+				throw new CodeError(Errors.CIX, id.position, id.lexeme.length);
 			e.push(id);
 		}
 		this.#consume("operator", ";");
@@ -362,7 +362,7 @@ class Interpreter {
 		else if (this.#check("char"))
 			return new Literal(this.#advance(), "char");
 		const p = this.#peek();
-		throw new CodeError(Errors.UEX, p.position, p.lexeme.length, this.code);
+		throw new CodeError(Errors.UEX, p.position, p.lexeme.length);
 	}
 
 	// ==== Interpreter ========================================================

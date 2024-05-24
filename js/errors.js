@@ -1,26 +1,28 @@
 
 class CodeError {
 
-	#where(position, length, code) {
+	static code = "";
+
+	#where(position, length) {
 		let row = 1, col = 1, app = 0;
 		for (let i = 0; i < position; i++) {
-			if (code[i] === '\n') { row++; col = 1; app = 0; }
+			if (CodeError.code[i] === '\n') { row++; col = 1; app = 0; }
 			else {
 				col++;
-				if (code[i] === '\t') app += 4;
+				if (CodeError.code[i] === '\t') app += 4;
 				else app++;
 			}
 		}
 		return [ row, col, app, length ];
 	}
 
-	#line(at, code) {
-		if (at < 0 || at >= code.length) return "";
-		if (code[at] === '\n') at--;
+	#line(at) {
+		if (at < 0 || at >= CodeError.code.length) return "";
+		if (CodeError.code[at] === '\n') at--;
 		let start = at, end = at;
-		while (start > 0 && code[start] !== '\n') start--;
-		while (end < code.length && code[end] !== '\n') end++;
-		return code.substring(start, end);
+		while (start > 0 && CodeError.code[start] !== '\n') start--;
+		while (end < CodeError.code.length && CodeError.code[end] !== '\n') end++;
+		return CodeError.code.substring(start, end);
 	}
 
 	#error(message, line) {
@@ -38,10 +40,10 @@ class CodeError {
 		return message.replace(/%/g, _ => parameters[i++]);
 	}
 
-	constructor(message, position, length, code, parameters) {
-		this.position = this.#where(position, length, code);
+	constructor(message, position, length, parameters) {
+		this.position = this.#where(position, length);
 		if (parameters) message = this.#unravel(message, parameters);
-		this.message = this.#error(message, this.#line(position, code));
+		this.message = this.#error(message, this.#line(position));
 	}
 
 }

@@ -47,10 +47,9 @@ class Environment {
 }
 
 class Program {
-	static code = "";
 	constructor(statements, code) {
 		this.statements = statements;
-		Program.code = code;
+		CodeError.code = code;
 	}
 	execute() {
 		Environment.create();
@@ -105,7 +104,7 @@ class Literal extends Expression {
 
 class Identifier extends Expression {
 	constructor(token) {
-		super(token.position, token.lexeme.length);
+		super(token.position, token.position + token.lexeme.length);
 		this.name = token;
 	}
 	execute() { return Environment.current.get(this.name); }
@@ -203,8 +202,12 @@ class InfixExpression extends Expression {
 	}
 	execute() {
 		const l = this.left.execute(), r = this.right.execute();
+		if (l.value === undefined)
+			throw new CodeError(Errors.INI, this.left.start, this.left.end - this.left.start);
+		if (r.value === undefined)
+			throw new CodeError(Errors.INI, this.right.start, this.right.end - this.right.start);
 		if ([ '/', '%' ].includes(this.operator.lexeme) && r.value === 0)
-			throw new CodeError(Errors.DBZ, this.right.start, this.right.end - this.right.start, Program.code);
+			throw new CodeError(Errors.DBZ, this.right.start, this.right.end - this.right.start);
 		let key = l.type + this.operator.lexeme + r.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](l, r);
@@ -240,6 +243,8 @@ class PrefixExpression extends Expression {
 	}
 	execute() { // TODO: fix increment and decrement (mutation)
 		const r = this.right.execute();
+		if (r.value === undefined)
+			throw new CodeError(Errors.INI, this.right.start, this.right.end - this.right.start);
 		let key = this.operator.lexeme + r.type;
 		if (key in PrefixExpression.#check)
 			return PrefixExpression.#check[key](r);
@@ -359,7 +364,7 @@ class Cout extends Statement {
 		for (const e of this.expressions) {
 			const value = e.execute().value;
 			if (value === undefined)
-				throw new CodeError(Errors.INI, e.start, e.end, Program.code);
+				throw new CodeError(Errors.INI, e.start, e.end);
 			Cout.print(value.toString());
 		}
 	}
