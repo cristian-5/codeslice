@@ -72,6 +72,7 @@ const EN_Errors = {
 	CIT: "Invalid cin type %",
 	CST: "Incompatible types % and % require casting",
 	CIX: "Invalid cin expression",
+	INI: "Use of unititialized variable",
 };
 
 let Errors = EN_Errors;

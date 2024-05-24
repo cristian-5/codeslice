@@ -354,8 +354,12 @@ class Cout extends Statement {
 		this.c = c;
 	}
 	execute() { // TODO: fix cout of non-initialized variables
-		for (const e of this.expressions)
-			Cout.print(e.execute().value.toString());
+		for (const e of this.expressions) {
+			const value = e.execute().value;
+			if (value === undefined)
+				throw new CodeError(Errors.INI, e.start, e.end, Program.code);
+			Cout.print(value.toString());
+		}
 	}
 }
 
