@@ -87,18 +87,17 @@ class Interpreter {
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
-					position = i; i++; t = "\'";
+					position = i; i++; t = "";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
 					if (code[i] == '\n') throw new CodeError(Errors.MTC, position, t.length);
-					t += "'";
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
 							if (!(c in escapedChars)) throw new CodeError(Errors.UES, position, t.length);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
 						} else throw new CodeError(Errors.ICL, position, t.length);
-					} else tokens.push({ lexeme: t, type: "char", position });
+					} else tokens.push({ lexeme: `'${t}'`, type: "char", position });
 				break;
 				default:
 					position = i;

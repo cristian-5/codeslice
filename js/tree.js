@@ -6,6 +6,10 @@ class Value {
 		this.value = value;
 		this.type = type;
 	}
+	toString() {
+		if (this.type === "char") return String.fromCharCode(this.value);
+		return this.value.toString();
+	}
 }
 
 class Environment {
@@ -75,7 +79,7 @@ class Assignment extends Expression {
 		const value = structuredClone(await this.right.execute());
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
-			throw new CodeError(Errors.CST, this.start, this.end, [
+			throw new CodeError(Errors.CST, this.start, this.end - this.start, [
 				id.type, value.type
 			]);
 		Environment.current.assign(this.left.name, value);
@@ -95,7 +99,7 @@ class Literal extends Expression {
 			case "string": return new Value(this.value.slice(1, -1), "string");
 			case  "float": return new Value(parseFloat(this.value), "float");
 			case    "int": return new Value(parseInt(this.value), "int");
-			default: throw new CodeError(Errors.LIT, this.start, this.end, [ this.value ]);
+			default: throw new CodeError(Errors.LIT, this.start, this.end - this.start, [ this.value ]);
 		}
 	}
 }
@@ -306,7 +310,7 @@ class Declaration extends Statement {
 			value = await this.expression.execute();
 			console.log(value);
 			if (value.type !== this.type.lexeme)
-				throw new CodeError(Errors.CST, this.start, this.end, [
+				throw new CodeError(Errors.CST, this.start, this.end - this.start, [
 					this.type.lexeme, value.type
 				]);
 		} else if (this.size > 1) {
@@ -364,7 +368,7 @@ class Cout extends Statement {
 			const data = await e.execute();
 			if (data.value === undefined)
 				throw new CodeError(Errors.INI, e.start, e.end - e.start);
-			Cout.print(data.value.toString());
+			Cout.print(data.toString());
 		}
 	}
 }
