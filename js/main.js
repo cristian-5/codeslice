@@ -15,21 +15,26 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e =
 	terminal.options.theme = structuredClone(e.matches ? theme.dark : theme.light);
 });
 
-function wait(ms) { 
-	return new Promise(resolve => setTimeout(() => resolve(true), ms));
-}
+const wait = ms => new Promise(r => setTimeout(() => r(true), ms));
 
-let last_line = "";
-function run() {
+async function run() {
 	const code = editor.getValue();
 	localStorage.setItem("code", code);
 	terminal.reset();
+	Cout.print = text => terminal.write(text);
+	Cin.prompt = async line => {
+		terminal.input_enabled = true;
+		while (!terminal.input_ready) await wait(100);
+		terminal.input_enabled = terminal.input_ready = false;
+		const data = terminal.input_data.trim();
+		terminal.input_data = "";
+		return data;
+	};
 	try {
-		Cout.print = text => terminal.write(text);
 		const interpreter = new Interpreter(code);
-		interpreter.run();
+		await interpreter.run();
 	} catch (e) {
-		if (!(e instanceof CodeError)) throw e;
+		if (!(e instanceof CodeError)) console.error(e);
 		terminal.write(e.message);
 	}
 }

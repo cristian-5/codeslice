@@ -367,10 +367,11 @@ class Interpreter {
 
 	// ==== Interpreter ========================================================
 
-	run() {
+	async run() {
 		if (this.tokens.length === 0) return;
 		this.current = 0;
-		this.#program().execute();
+		CodeError.code = this.code;
+		await this.#program().execute();
 	}
 
 }

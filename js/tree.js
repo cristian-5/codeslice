@@ -28,32 +28,30 @@ class Environment {
 
 	define(token, value) {
 		if (this.values.has(token.lexeme))
-			throw new CodeError(Errors.VRD, token.position, token.lexeme.length, Program.code, [ token.lexeme ]);
+			throw new CodeError(Errors.VRD, token.position, token.lexeme.length, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
 	}
 
 	assign(token, value) {
 		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
 		else if (this.parent) this.parent.assign(token, value);
-		else throw new CodeError(Errors.UVR, token.position, token.lexeme.length, Program.code, [ token.lexeme ]);
+		else throw new CodeError(Errors.UVR, token.position, token.lexeme.length, [ token.lexeme ]);
 	}
 
 	get(token) {
 		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
 		if (this.parent) return this.parent.get(token);
-		throw new CodeError(Errors.UVR, token.position, token.lexeme.length, Program.code, [ token.lexeme ]);
+		throw new CodeError(Errors.UVR, token.position, token.lexeme.length, [ token.lexeme ]);
 	}
 
 }
 
 class Program {
-	constructor(statements, code) {
-		this.statements = statements;
-		CodeError.code = code;
-	}
-	execute() {
+	constructor(statements) { this.statements = statements; }
+	async execute() {
 		Environment.create();
-		for (const statement of this.statements) statement.execute();
+		for (const statement of this.statements)
+			await statement.execute();
 	}
 }
 
@@ -73,11 +71,11 @@ class Assignment extends Expression {
 		this.operator = operator;
 		this.right = right;
 	}
-	execute() {
-		const value = structuredClone(this.right.execute());
+	async execute() {
+		const value = structuredClone(await this.right.execute());
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
-			throw new CodeError(Errors.CST, this.start, this.end, Program.code, [
+			throw new CodeError(Errors.CST, this.start, this.end, [
 				id.type, value.type
 			]);
 		Environment.current.assign(this.left.name, value);
@@ -91,13 +89,13 @@ class Literal extends Expression {
 		this.value = token.lexeme;
 		this.type = type;
 	}
-	execute() {
+	async execute() {
 		switch (this.type) {
 			case   "char": return new Value(this.value.charCodeAt(1), "char");
 			case "string": return new Value(this.value.slice(1, -1), "string");
 			case  "float": return new Value(parseFloat(this.value), "float");
 			case    "int": return new Value(parseInt(this.value), "int");
-			default: throw new CodeError(Errors.LIT, this.start, this.end, Program.code, [ this.value ]);
+			default: throw new CodeError(Errors.LIT, this.start, this.end, [ this.value ]);
 		}
 	}
 }
@@ -107,7 +105,7 @@ class Identifier extends Expression {
 		super(token.position, token.position + token.lexeme.length);
 		this.name = token;
 	}
-	execute() { return Environment.current.get(this.name); }
+	async execute() { return Environment.current.get(this.name); }
 }
 
 class InfixExpression extends Expression {
@@ -200,8 +198,8 @@ class InfixExpression extends Expression {
 		this.operator = operator;
 		this.right = right;
 	}
-	execute() {
-		const l = this.left.execute(), r = this.right.execute();
+	async execute() {
+		const l = await this.left.execute(), r = await this.right.execute();
 		if (l.value === undefined)
 			throw new CodeError(Errors.INI, this.left.start, this.left.end - this.left.start);
 		if (r.value === undefined)
@@ -215,7 +213,7 @@ class InfixExpression extends Expression {
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](r, l);
 		throw new CodeError(Errors.UOB, this.operator.position,
-			this.operator.lexeme.length, Program.code, [
+			this.operator.lexeme.length, [
 			this.operator.lexeme, l.type, r.type
 		]);
 	}
@@ -241,14 +239,14 @@ class PrefixExpression extends Expression {
 		this.operator = operator;
 		this.right = right;
 	}
-	execute() { // TODO: fix increment and decrement (mutation)
-		const r = this.right.execute();
+	async execute() { // TODO: fix increment and decrement (mutation)
+		const r = await this.right.execute();
 		if (r.value === undefined)
 			throw new CodeError(Errors.INI, this.right.start, this.right.end - this.right.start);
 		let key = this.operator.lexeme + r.type;
 		if (key in PrefixExpression.#check)
 			return PrefixExpression.#check[key](r);
-		throw new CodeError(Errors.UPO, o.position, o.lexeme.length, Program.code, [
+		throw new CodeError(Errors.UPO, o.position, o.lexeme.length, [
 			this.operator.lexeme, r.type
 		]);
 	}
@@ -279,7 +277,7 @@ class Subscript extends Expression {
 		this.index = index;
 		this.expression = expression;
 	}
-	execute() {
+	async execute() {
 
 	}
 }
@@ -302,12 +300,13 @@ class Declaration extends Statement {
 		this.expression = expression;
 		this.size = 1;
 	}
-	execute() {
+	async execute() {
 		let value;
 		if (this.expression) {
-			value = this.expression.execute();
+			value = await this.expression.execute();
+			console.log(value);
 			if (value.type !== this.type.lexeme)
-				throw new CodeError(Errors.CST, this.start, this.end, Program.code, [
+				throw new CodeError(Errors.CST, this.start, this.end, [
 					this.type.lexeme, value.type
 				]);
 		} else if (this.size > 1) {
@@ -324,9 +323,9 @@ class Block extends Statement {
 		this.rbrace = rbrace;
 		this.statements = statements;
 	}
-	execute() {
+	async execute() {
 		Environment.open();
-		for (const s of this.statements) s.execute();
+		for (const s of this.statements) await s.execute();
 		Environment.close();
 	}
 }
@@ -336,7 +335,7 @@ class Instruction extends Statement {
 		super(expression.start, expression.end);
 		this.expression = expression;
 	}
-	execute() { this.expression.execute(); }
+	async execute() { await this.expression.execute(); }
 }
 
 class If extends Statement {
@@ -346,9 +345,9 @@ class If extends Statement {
 		this.then = then;
 		this.els = els;
 	}
-	execute() {
-		if (this.condition.execute().value) this.then.execute();
-		else if (this.els) this.els.execute();
+	async execute() {
+		if (await this.condition.execute().value) await this.then.execute();
+		else if (this.els) await this.els.execute();
 	}
 
 }
@@ -360,46 +359,55 @@ class Cout extends Statement {
 		this.expressions = expressions;
 		this.c = c;
 	}
-	execute() { // TODO: fix cout of non-initialized variables
+	async execute() {
 		for (const e of this.expressions) {
-			const value = e.execute().value;
-			if (value === undefined)
-				throw new CodeError(Errors.INI, e.start, e.end);
-			Cout.print(value.toString());
+			const data = await e.execute();
+			if (data.value === undefined)
+				throw new CodeError(Errors.INI, e.start, e.end - e.start);
+			Cout.print(data.value.toString());
 		}
 	}
 }
 
 class Cin extends Statement {
+	static prompt = async () => prompt();
+	static input_queue = [];
 	constructor(c, expressions) {
 		super(expressions[0].start, expressions[expressions.length - 1].end);
 		this.expressions = expressions;
 		this.c = c;
 	}
-	execute() { // TODO: fix cin with terminal
+	async execute() {
 		for (const e of this.expressions) {
-			const value = prompt();
+			let value = Cin.input_queue.shift() || await Cin.prompt();
 			const id = Environment.current.get(e.name);
+			if (Cin.input_queue.length === 0 && id.type !== "string") {
+				const chunks = value.split(/[\s\n\r]+/gm);
+				if (chunks.length > 1) {
+					value = chunks.shift();
+					Cin.input_queue.push(...chunks);
+				} else value = chunks[0];
+			}
 			switch (id.type) {
 				case "int":
 					id.value = parseInt(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end, Program.code, [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
 				break;
 				case "float":
 					id.value = parseFloat(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end, Program.code, [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
 				break;
 				case "char":
 					id.value = value.charCodeAt(0);
-					if (value.length !== 1) throw new CodeError(Errors.CII, e.start, e.end, Program.code, [ id.type ]);
+					if (value.length !== 1) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
 				break;
 				case "string": id.value = value; break;
 				case "bool":
 					if (value === "true" || value == 1) id.value = true;
 					else if (value === "false" || value == 0) id.value = false;
-					else throw new CodeError(Errors.CII, e.start, e.end, Program.code, [ id.type ]);
+					else throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
 				break;
-				default: throw new CodeError(Errors.CIT, e.start, e.end, Program.code, [ id.type ]);
+				default: throw new CodeError(Errors.CIT, e.start, e.end - e.start, [ id.type ]);
 			}
 		}
 	}

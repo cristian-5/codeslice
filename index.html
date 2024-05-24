@@ -93,7 +93,21 @@
 			fontSize: 16, fontFamily: "monospace",
 			theme: darkMode() ? theme.dark : theme.light
 		});
-        window.terminal.open(document.getElementById('terminal'));
+        window.terminal.open(document.getElementById("terminal"));
+		window.terminal.input_enabled = false;
+		window.terminal.input_ready = false;
+		window.terminal.input_data = "";
+		window.terminal.onKey(e => {
+			if (!window.terminal.input_enabled) return;
+			if (e.key === "\r") {
+				window.terminal.input_ready = true;
+				window.terminal.input_enabled = false;
+				window.terminal.write('\n');
+			} else {
+				window.terminal.input_data += e.key;
+				window.terminal.write(e.key);
+			}
+		});
 		
 		import splitGrid from "https://cdn.jsdelivr.net/npm/split-grid@1.0.11/+esm";
 		window.Split = splitGrid;
