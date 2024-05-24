@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍰</text></svg>'>
-	<title>Code SL/CE c++ Interpreter</title>
+	<title>Code SL/CE c+- Interpreter</title>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.0/normalize.min.css">
 	<link rel="stylesheet" href="css/style.css">
 
@@ -19,14 +19,17 @@
 <body>
 	
 	<nav>
-		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c++ Interpreter</h1>
+		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c+- Interpreter</h1>
 		<div class="cassette">
 			<button onclick="debug()"><i class="fa-solid fa-bug-slash orange"></i></button>
 			<button onclick="run()"><i class="fa-solid fa-play gray" style="margin:0 8px 0 0"></i> Run</button>
-			<button onclick="download()" disabled><i class="fa-solid fa-download green"></i></button>
-			<button onclick="settings()" disabled><i class="fa-solid fa-gear blue"></i></button>
+			<button onclick="download()" disabled><i class="fa-solid fa-floppy-disk green"></i></button>
+			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open blue"></i></button>
 		</div>
-		<button onclick=""><i class="fa-solid fa-circle-half-stroke gray"></i></button>
+		<div class="hidden-buttons">
+			<button onclick="alert('I hope you like my app.\n- Cristian Antonuccio')">Made with ❤️</button>
+			<button onclick=""><i class="fa-solid fa-circle-half-stroke gray"></i></button>
+		</div>
 	</nav>
 
 	<div id="splitgrid">
@@ -64,12 +67,7 @@
 			cppModel.updateOptions({ insertSpaces: false, tabSize: 4 });
 			window.editor = monaco.editor.create(document.getElementById("monaco"), {
 				value: localStorage.getItem("code") || [
-					"\n#include <iostream>\n",
-					"using namespace std;\n",
-					"int main() {",
-					"\tcout << \"Hello, world!\" << endl;",
-					"\treturn 0;",
-					"}\n"
+					"\ncout << \"Hello, world!\" << endl;\n",
 				].join('\n'),
 				language: "cpp",
 				codeLens: true,
