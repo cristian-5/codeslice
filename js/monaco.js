@@ -26,8 +26,12 @@ require([ "vs/editor/editor.main" ], function() {
 			{ open: '"', close: '"' },
 			{ open: "'", close: "'" }
 		],
+		folding: {
+			markers: { start: /\{/, end: /\}/ },
+			offSide: true
+		}
 	});
-
+	// FIX: multiline comments highlighting
 	monaco.languages.setMonarchTokensProvider("c+-", {
 		brackets: [
 			{ token: 'delimiter.curly', open: '{', close: '}' },
@@ -55,14 +59,14 @@ require([ "vs/editor/editor.main" ], function() {
 				[/\d+/, "number"],
 				[/'[^\\']'/, "string.char"],
 				[/"[^\\"]*"/, "string"],
-				[/[~!%^&*\+\=\|\/\-]+/, "delimiter"],
+				[/[~!%^&*\+\=\|\-]+/, "delimiter"],
 				[/\./, "delimiter.period"],
 				[/\,/, "delimiter.comma"],
 				[/;/, "delimiter.semicolon"],
 				[/<<|>>/, "delimiter.angle"],
 				[/\s+/, "white"],
-				// [/\/\/.*$/, "comment"],
-				// [/\/\*/, "comment"]
+				[/\/\/.*$/, "comment"],
+				[/\//, "delimiter"],
 			]
 		}
 	});
