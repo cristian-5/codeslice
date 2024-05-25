@@ -4,7 +4,6 @@ class CodeError {
 	static code = "";
 
 	#where(position) {
-		console.log("W", position);
 		const [ start, end ] = position, length = end - start;
 		let row = 1, col = 1, app = 0;
 		for (let i = 0; i < end - length; i++) {

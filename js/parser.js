@@ -20,7 +20,7 @@ const keywords = [
 	"break", "continue",
 ];
 
-class Interpreter {
+class Parser {
 
 	constructor(code) {
 		CodeError.code = this.code = code.replace(/\r/g, ""); // CRLF to LF
@@ -356,15 +356,15 @@ class Interpreter {
 			return new Literal(this.#advance(), "string");
 		else if (this.#check("char"))
 			return new Literal(this.#advance(), "char");
-		throw new CodeError(Errors.UEX, this.#peek());
+		throw new CodeError(Errors.UEX, this.#peek() || this.#previous());
 	}
 
 	// ==== Interpreter ========================================================
 
-	async run() {
+	async parse() {
 		if (this.tokens.length === 0) return;
 		this.current = 0;
-		await this.#program().execute();
+		return await this.#program();
 	}
 
 }

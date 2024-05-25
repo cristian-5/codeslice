@@ -195,7 +195,10 @@ header {
 	text-align: left;
 	color: rgba(255, 255, 255, 0.4);
 }
-.variable td { text-align: center; }
+.variable td {
+	font-family: monospace;
+	text-align: center;
+}
 
 .white { color: #fff; }
 .black { color: #111; }

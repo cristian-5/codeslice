@@ -81,14 +81,18 @@ require([ "vs/editor/editor.main" ], function() {
 		minimap: { enabled: false },
 		fontSize: 16,
 		automaticLayout: true,
-		insertSpaces: false,
 		theme: darkMode() ? "vs-dark" : "vs"
 	});
-	window.editor.getModel().updateOptions({
-		insertSpaces: false, tabSize: 4,
+	editor.last_typing = 0;
+	editor.is_typing = false;
+	window.editor.onDidChangeModelContent(() => {
+		monaco.editor.setModelMarkers(editor.getModel(), "owner", []);
+		if (editor.last_typing < Date.now() - 1000) {
+			editor.is_typing = false;
+		} else {
+			editor.is_typing = true;
+			editor.last_typing = Date.now();
+		}
 	});
-	window.editor.revealLine(7);
-	window.editor.setPosition({ lineNumber: 7, column: 30 });
+	window.setInterval(() => { if (!editor.is_typing) compile(); }, 1500);
 });
-
-
