@@ -244,7 +244,7 @@ class Parser {
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();
 			if (!(id instanceof Identifier))
-				throw new CodeError(Errors.CIX, id);
+				throw new CodeError(Errors.CIX, [ id.start, id.end ]);
 			e.push(id);
 		}
 		this.#consume("operator", ";");

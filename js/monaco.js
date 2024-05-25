@@ -51,20 +51,18 @@ require([ "vs/editor/editor.main" ], function() {
 						'@default': 'identifier'
 					}
 				}],
-				[/\d*\.\d+([eE][\-+]?\d+)?/, "number.float"],
+				[/\d+\.\d+/, "number.float"],
 				[/\d+/, "number"],
 				[/'[^\\']'/, "string.char"],
 				[/"[^\\"]*"/, "string"],
-				[/[~!%^&*+=|?:<>/-]+/, "operator"],
-				[/\{/, "delimiter.curly"],
-				[/\[/, "delimiter.square"],
-				[/\(/, "delimiter.parenthesis"],
+				[/[~!%^&*\+\=\|\/\-]+/, "delimiter"],
 				[/\./, "delimiter.period"],
 				[/\,/, "delimiter.comma"],
 				[/;/, "delimiter.semicolon"],
+				[/<<|>>/, "delimiter.angle"],
 				[/\s+/, "white"],
-				[/\/\/.*$/, "comment"],
-				[/\/\*/, "comment"]
+				// [/\/\/.*$/, "comment"],
+				// [/\/\*/, "comment"]
 			]
 		}
 	});

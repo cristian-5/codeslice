@@ -218,7 +218,7 @@ header {
 .char { background-color: rgb(245, 188, 0); }
 
 @media (prefers-color-scheme: dark) {
-	.mtk9 { color: #757575; }
+	.mtk9 { color: #757575 !important; }
 	body {
 		background-color: #0F0F0F;
 		color: #fff;
