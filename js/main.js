@@ -34,7 +34,16 @@ async function run() {
 		const interpreter = new Interpreter(code);
 		await interpreter.run();
 	} catch (e) {
-		if (!(e instanceof CodeError)) console.error(e);
-		terminal.write(e.message);
+		if (!(e instanceof CodeError)) {
+			console.error(e);
+			return;
+		}
+		terminal.write(e.colorful_message);
+		console.log(e.message);
+		monaco.editor.setModelMarkers(editor.getModel(), "owner", [{
+			startLineNumber: e.position[0], startColumn: e.position[1],
+			endLineNumber: e.position[0], endColumn: e.position[1] + e.position[3],
+			message: e.message, severity: monaco.MarkerSeverity.Error
+		}]);
 	}
 }

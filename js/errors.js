@@ -46,8 +46,9 @@ class CodeError {
 			position.position, position.position + position.lexeme.length
 		];
 		this.position = this.#where(position);
-		if (parameters) message = this.#unravel(message, parameters);
-		this.message = this.#error(message, this.#line(position[0]));
+		if (parameters) this.message = this.#unravel(message, parameters);
+		else this.message = message;
+		this.colorful_message = this.#error(this.message, this.#line(position[0]));
 	}
 
 }
