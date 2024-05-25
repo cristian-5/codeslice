@@ -22,7 +22,7 @@ let AST = null;
 async function compile(show_error = false) {
 	const code = editor.getValue();
 	localStorage.setItem("code", code);
-	terminal.reset();
+	if (show_error) terminal.reset();
 	monaco.editor.setModelMarkers(editor.getModel(), "owner", []);
 	AST = null;
 	try {
@@ -46,15 +46,7 @@ async function compile(show_error = false) {
 async function run() {
 	if (!AST) await compile(true);
 	terminal.reset();
-	Cout.print = text => terminal.write(text);
-	Cin.prompt = async () => {
-		terminal.input_enabled = true;
-		while (!terminal.input_ready) await wait(100);
-		terminal.input_enabled = terminal.input_ready = false;
-		const data = terminal.input_data.trim();
-		terminal.input_data = "";
-		return data;
-	};
+	document.getElementById("debug").innerHTML = ""; // clear debug view
 	try { await AST.execute(); } catch (e) {
 		if (!(e instanceof CodeError)) {
 			console.error(e);
@@ -68,3 +60,35 @@ async function run() {
 		}]);
 	}
 }
+
+Cout.print = text => terminal.write(text);
+Cin.prompt = async () => {
+	terminal.input_enabled = true;
+	while (!terminal.input_ready) await wait(100);
+	terminal.input_enabled = terminal.input_ready = false;
+	const data = terminal.input_data.trim();
+	terminal.input_data = "";
+	return data;
+};
+
+Environment.on_define = async (id, data) => {
+	switch (data.type) {
+		case "int": case "float": case "string": case "bool":
+			document.getElementById("debug").innerHTML += `
+			<table class="variable ${data.type}" data-id="${id}" data-assigned="false">
+				<tr><th>${id}</th></tr>
+				<tr><td>${data.value === undefined ? '?' : data.value}</td></tr>
+			</table>`;
+		break;
+	}
+};
+
+Environment.on_change = async (id, data) => {
+	const last = document.querySelector(`.variable[data-assigned="true"]`);
+	if (last) last.setAttribute("data-assigned", "false");
+	const variable = document.querySelector(`.variable[data-id="${id}"]`);
+	if (variable) variable.querySelector("td").textContent = (
+		data.value === undefined ? '?' : data.value
+	);
+	variable.setAttribute("data-assigned", "true");
+};

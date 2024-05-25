@@ -54,6 +54,7 @@ class Parser {
 
 	// ==== Lexer ==============================================================
 
+	// FIX: comments
 	#lex() {
 		const code = this.code;
 		let tokens = [], grouped = []; let i = 0, t = "", position = 0;

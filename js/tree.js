@@ -16,6 +16,9 @@ class Environment {
 
 	static current = undefined;
 
+	static on_define = (id, data) => {};
+	static on_change = (id, data) => {};
+
 	static create() {
 		Environment.current = new Environment(undefined);
 		Environment.current.values.set("true",  new Value(true, "bool"));
@@ -34,12 +37,14 @@ class Environment {
 		if (this.values.has(token.lexeme))
 			throw new CodeError(Errors.VRD, token, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
+		if (!this.parent) Environment.on_define(token.lexeme, value);
 	}
 
 	assign(token, value) {
 		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
 		else if (this.parent) this.parent.assign(token, value);
 		else throw new CodeError(Errors.UVR, token, [ token.lexeme ]);
+		if (!this.parent) Environment.on_change(token.lexeme, value);
 	}
 
 	get(token) {
@@ -411,6 +416,7 @@ class Cin extends Statement {
 				break;
 				default: throw new CodeError(Errors.CIT, [ e.start, e.end ], [ id.type ]);
 			}
+			Environment.current.assign(e.name, id); // just to notify change
 		}
 	}
 }
