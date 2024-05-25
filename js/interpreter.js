@@ -14,14 +14,16 @@ const escapedChars = {
 const types = [ "int", "float", "char", "string", "bool" ];
 const keywords = [
 	"cout", "cin",
-	"if", "else", "while", "for", "do", "switch", "case", "default",
-	"break", "continue", "return", "using", "namespace",
+	"if", "else",
+	"switch", "case", "default",
+	"while", "for", "do",
+	"break", "continue",
 ];
 
 class Interpreter {
 
 	constructor(code) {
-		this.code = code.replace(/\r/g, ""); // CRLF to LF
+		CodeError.code = this.code = code.replace(/\r/g, ""); // CRLF to LF
 		this.tokens = this.#lex();
 	}
 
@@ -42,9 +44,12 @@ class Interpreter {
 	#consume(t, l) {
 		if (this.#match(t, l)) return this.#previous();
 		const prev = this.#previous() || { position: 0, lexeme: "" };
-		const position = prev.position + prev.lexeme.length;
-		if (l) throw new CodeError(Errors.EXM, position, 1, this.code, [ t, l ]);
-		throw new CodeError(Errors.EXT, position, 1, this.code, [ t ]);
+		const position = [
+			prev.position + prev.lexeme.length,
+			prev.position + prev.lexeme.length + 1
+		];
+		if (l) throw new CodeError(Errors.EXM, position, [ t, l ]);
+		throw new CodeError(Errors.EXT, position, [ t ]);
 	}
 
 	// ==== Lexer ==============================================================
@@ -69,34 +74,29 @@ class Interpreter {
 					} else if (code[i + 1] === '*') {
 						i += 2;
 						while (i < code.length && !(code[i - 1] === '*' && code[i] === '/')) i++;
-						if (i === code.length) throw new CodeError(Errors.MTC, position, 2);
+						if (code[i] !== '/')
+							throw new CodeError(Errors.MTC, [ position, position + 1 ], '/');
 						i++;
 					} else tokens.push({ lexeme: code[i], type: "operator", position });
-				break;
-				case '#':
-					position = i; i++; t = "#";
-					while (i < code.length && code[i] !== '\n')
-						t += code[i++];
-					tokens.push({ lexeme: t, type: "directive", position });
 				break;
 				case '"':
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Errors.MTS, position, t.length);
+					if (code[i] == '\n') throw new CodeError(Errors.MTS, [ position, i ]);
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
 					position = i; i++; t = "";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Errors.MTC, position, t.length);
+					if (code[i] === '\n') throw new CodeError(Errors.MTC, [ position, i ], "'");
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new CodeError(Errors.UES, position, t.length);
+							if (!(c in escapedChars)) throw new CodeError(Errors.UES, [ position, i ]);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new CodeError(Errors.ICL, position, t.length);
+						} else throw new CodeError(Errors.ICL, [ position, i ]);
 					} else tokens.push({ lexeme: `'${t}'`, type: "char", position });
 				break;
 				default:
@@ -112,7 +112,7 @@ class Interpreter {
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
-					} else throw new CodeError(Errors.UNC, position, 1);
+					} else throw new CodeError(Errors.UNC, [ position, position + 1 ]);
 					i--;
 				break;
 			}
@@ -228,10 +228,8 @@ class Interpreter {
 	// <cout> := "cout" << <expression> ( << <expression> )*
 	#cout() {
 		const c = this.#consume("keyword", "cout");
-		if (!this.#check("operator", "<<")) {
-			const p = this.#peek();
-			throw new CodeError(Errors.COU, p.position, p.lexeme.length);
-		}
+		if (!this.#check("operator", "<<"))
+			throw new CodeError(Errors.COU, this.#peek());
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
 		this.#consume("operator", ";");
@@ -240,15 +238,13 @@ class Interpreter {
 	// <cin> := "cin" >> <identifier> ( >> <identifier> )*
 	#cin() {
 		const c = this.#consume("keyword", "cin");
-		if (!this.#check("operator", ">>")) {
-			const p = this.#peek();
-			throw new CodeError(Errors.CIN, p.position, p.lexeme.length);
-		}
+		if (!this.#check("operator", ">>"))
+			throw new CodeError(Errors.CIN, this.#peek());
 		let e = [];
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();
 			if (!(id instanceof Identifier))
-				throw new CodeError(Errors.CIX, id.position, id.lexeme.length);
+				throw new CodeError(Errors.CIX, id);
 			e.push(id);
 		}
 		this.#consume("operator", ";");
@@ -266,7 +262,7 @@ class Interpreter {
 			const op = this.#previous();
 			const value = this.#assignment();
 			if (e instanceof Identifier) return new Assignment(e, op, value);
-			throw new CodeError(Errors.IAT, e.position, e.lexeme.length, this.code, [ e.lexeme ]);
+			throw new CodeError(Errors.IAT, [ e.start, e.end ]);
 		} else return e;
 	}
 	// <logic_or> := <logic_and> ( "||" <logic_and> )*
@@ -360,8 +356,7 @@ class Interpreter {
 			return new Literal(this.#advance(), "string");
 		else if (this.#check("char"))
 			return new Literal(this.#advance(), "char");
-		const p = this.#peek();
-		throw new CodeError(Errors.UEX, p.position, p.lexeme.length);
+		throw new CodeError(Errors.UEX, this.#peek());
 	}
 
 	// ==== Interpreter ========================================================
@@ -369,7 +364,6 @@ class Interpreter {
 	async run() {
 		if (this.tokens.length === 0) return;
 		this.current = 0;
-		CodeError.code = this.code;
 		await this.#program().execute();
 	}
 

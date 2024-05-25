@@ -32,20 +32,20 @@ class Environment {
 
 	define(token, value) {
 		if (this.values.has(token.lexeme))
-			throw new CodeError(Errors.VRD, token.position, token.lexeme.length, [ token.lexeme ]);
+			throw new CodeError(Errors.VRD, token, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
 	}
 
 	assign(token, value) {
 		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
 		else if (this.parent) this.parent.assign(token, value);
-		else throw new CodeError(Errors.UVR, token.position, token.lexeme.length, [ token.lexeme ]);
+		else throw new CodeError(Errors.UVR, token, [ token.lexeme ]);
 	}
 
 	get(token) {
 		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
 		if (this.parent) return this.parent.get(token);
-		throw new CodeError(Errors.UVR, token.position, token.lexeme.length, [ token.lexeme ]);
+		throw new CodeError(Errors.UVR, token, [ token.lexeme ]);
 	}
 
 }
@@ -79,7 +79,7 @@ class Assignment extends Expression {
 		const value = structuredClone(await this.right.execute());
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
-			throw new CodeError(Errors.CST, this.start, this.end - this.start, [
+			throw new CodeError(Errors.CST, [ this.start, this.end ], [
 				id.type, value.type
 			]);
 		Environment.current.assign(this.left.name, value);
@@ -99,7 +99,7 @@ class Literal extends Expression {
 			case "string": return new Value(this.value.slice(1, -1), "string");
 			case  "float": return new Value(parseFloat(this.value), "float");
 			case    "int": return new Value(parseInt(this.value), "int");
-			default: throw new CodeError(Errors.LIT, this.start, this.end - this.start, [ this.value ]);
+			default: throw new CodeError(Errors.LIT, [ this.start, this.end ], [ this.value ]);
 		}
 	}
 }
@@ -205,19 +205,18 @@ class InfixExpression extends Expression {
 	async execute() {
 		const l = await this.left.execute(), r = await this.right.execute();
 		if (l.value === undefined)
-			throw new CodeError(Errors.INI, this.left.start, this.left.end - this.left.start);
+			throw new CodeError(Errors.INI, [ this.left.start, this.left.end ]);
 		if (r.value === undefined)
-			throw new CodeError(Errors.INI, this.right.start, this.right.end - this.right.start);
+			throw new CodeError(Errors.INI, [ this.right.start, this.right.end ]);
 		if ([ '/', '%' ].includes(this.operator.lexeme) && r.value === 0)
-			throw new CodeError(Errors.DBZ, this.right.start, this.right.end - this.right.start);
+			throw new CodeError(Errors.DBZ, [ this.right.start, this.right.end ]);
 		let key = l.type + this.operator.lexeme + r.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](l, r);
 		key = r.type + this.operator.lexeme + l.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](r, l);
-		throw new CodeError(Errors.UOB, this.operator.position,
-			this.operator.lexeme.length, [
+		throw new CodeError(Errors.UOB, this.operator, [
 			this.operator.lexeme, l.type, r.type
 		]);
 	}
@@ -246,11 +245,11 @@ class PrefixExpression extends Expression {
 	async execute() { // TODO: fix increment and decrement (mutation)
 		const r = await this.right.execute();
 		if (r.value === undefined)
-			throw new CodeError(Errors.INI, this.right.start, this.right.end - this.right.start);
+			throw new CodeError(Errors.INI, this.right.start, this.right.end);
 		let key = this.operator.lexeme + r.type;
 		if (key in PrefixExpression.#check)
 			return PrefixExpression.#check[key](r);
-		throw new CodeError(Errors.UPO, o.position, o.lexeme.length, [
+		throw new CodeError(Errors.UPO, this.operator, [
 			this.operator.lexeme, r.type
 		]);
 	}
@@ -308,9 +307,8 @@ class Declaration extends Statement {
 		let value;
 		if (this.expression) {
 			value = await this.expression.execute();
-			console.log(value);
 			if (value.type !== this.type.lexeme)
-				throw new CodeError(Errors.CST, this.start, this.end - this.start, [
+				throw new CodeError(Errors.CST, [ this.start, this.end ], [
 					this.type.lexeme, value.type
 				]);
 		} else if (this.size > 1) {
@@ -367,7 +365,7 @@ class Cout extends Statement {
 		for (const e of this.expressions) {
 			const data = await e.execute();
 			if (data.value === undefined)
-				throw new CodeError(Errors.INI, e.start, e.end - e.start);
+				throw new CodeError(Errors.INI, [ e.start, e.end ]);
 			Cout.print(data.toString());
 		}
 	}
@@ -395,23 +393,23 @@ class Cin extends Statement {
 			switch (id.type) {
 				case "int":
 					id.value = parseInt(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "float":
 					id.value = parseFloat(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "char":
 					id.value = value.charCodeAt(0);
-					if (value.length !== 1) throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
+					if (value.length !== 1) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "string": id.value = value; break;
 				case "bool":
 					if (value === "true" || value == 1) id.value = true;
 					else if (value === "false" || value == 0) id.value = false;
-					else throw new CodeError(Errors.CII, e.start, e.end - e.start, [ id.type ]);
+					else throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
-				default: throw new CodeError(Errors.CIT, e.start, e.end - e.start, [ id.type ]);
+				default: throw new CodeError(Errors.CIT, [ e.start, e.end ], [ id.type ]);
 			}
 		}
 	}

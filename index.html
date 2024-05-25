@@ -22,13 +22,13 @@
 	<nav>
 		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c+- Interpreter</h1>
 		<div class="cassette">
-			<button onclick="debug()"><i class="fa-solid fa-bug-slash orange"></i></button>
+			<button onclick="check()"><i class="fa-solid fa-check gray"></i></button>
 			<button onclick="run()"><i class="fa-solid fa-play gray" style="margin:0 8px 0 0"></i> Run</button>
-			<button onclick="download()" disabled><i class="fa-solid fa-floppy-disk green"></i></button>
-			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open blue"></i></button>
+			<button onclick="download()" disabled><i class="fa-solid fa-floppy-disk gray"></i></button>
+			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open gray"></i></button>
 		</div>
 		<div class="hidden-buttons">
-			<button onclick="alert('I hope you like my app.\n- Cristian Antonuccio')">Made with ❤️</button>
+			<button onclick="alert('I hope you like my app.\n- Cristian Antonuccio')">Made with <i class="fa-solid fa-heart red"></i></button>
 			<button onclick=""><i class="fa-solid fa-circle-half-stroke gray"></i></button>
 		</div>
 	</nav>
@@ -42,15 +42,28 @@
 		</section>
 		<section id="view-box">
 			<header>
-				<div><i class="fa-solid fa-eye magenta"></i> <span style="margin: 0 4px">Data View</span></div>
+				<div><i class="fa-solid fa-bug-slash orange"></i> <span style="margin: 0 4px">Debug View</span></div>
 			</header>
+			<div id="debug">
+				<table class="variable float">
+					<tr><th>X</th></tr>
+					<tr><td>10.44</td></tr>
+				</table>
+				<table class="variable int">
+					<tr><th>Y</th></tr>
+					<tr><td>5</td></tr>
+				</table>
+				<table class="variable bool">
+					<tr><th>H</th></tr>
+					<tr><td>true</td></tr>
+				</table>
+			</div>
 		</section>
 		<section id="term-box">
 			<header>
 				<div><i class="fa-solid fa-code blue"></i> <span style="margin: 0 4px">Console</span></div>
 			</header>
 			<pre id="terminal"></pre>
-			<pre id="console"></pre>
 		</section>
 		<div id="gutter-v" class="gutter"></div>
 		<div id="gutter-h" class="gutter"></div>
@@ -61,33 +74,8 @@
 		integrity="sha256-0SGl1PJNDyJwcV5T+weg2zpEMrh7xvlwO4oXgvZCeZk="
 		crossorigin="anonymous"
 	></script>
+	<script type="module" src="js/monaco.js"></script>
 	<script type="module">
-		require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.48.0/min/vs" }});
-		require([ "vs/editor/editor.main" ], function() {
-			const cppModel = monaco.editor.createModel("");
-			cppModel.updateOptions({ insertSpaces: false, tabSize: 4 });
-			window.editor = monaco.editor.create(document.getElementById("monaco"), {
-				value: localStorage.getItem("code") || [
-					"\ncout << \"Hello, world!\" << endl;\n",
-				].join('\n'),
-				language: "cpp",
-				codeLens: true,
-				cursorStyle: "line",
-				quickSuggestions: true,
-				contextmenu: false,
-				minimap: { enabled: false },
-				fontSize: 16,
-				automaticLayout: true,
-				insertSpaces: false,
-				theme: darkMode() ? "vs-dark" : "vs"
-			});
-			window.editor.getModel().updateOptions({
-				insertSpaces: false, tabSize: 4,
-			});
-			window.editor.revealLine(7);
-			window.editor.setPosition({ lineNumber: 7, column: 30 });
-		});
-
 		window.terminal = new Terminal({
 			convertEol: true, cursorBlink: true,
 			fontSize: 16, fontFamily: "monospace",
