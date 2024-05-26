@@ -70,21 +70,51 @@ Cin.prompt = async () => {
 };
 
 Environment.on_define = async (id, data) => {
+	switch (data.dimensions) {
+		case 1:
+			document.getElementById("debug").innerHTML += `
+			<div class="variable ${data.base}"><table class="array" data-id="${id}">
+				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
+				<tr>${Array.from({ length: data.sizes[0] }).map((_, i) => `
+					<td title="(${i})">${data.value[i] === undefined ?
+						'<span style="color:rgba(255,255,255,0.3)">?</span>' :
+						data.value[i]}
+					</td>
+				`).join('')}</tr>
+			</table></div>`;
+		return;
+		case 2:
+			document.getElementById("debug").innerHTML += `
+			<div class="variable ${data.base}"><table class="array" data-id="${id}">
+				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
+				${Array.from({ length: data.sizes[0] }).map((_, i) => `
+					<tr>${Array.from({ length: data.sizes[1] }).map((_, j) => `
+						<td title="(${i}, ${j})">${data.value[i][j] === undefined ?
+							'<span style="color:rgba(255,255,255,0.3)">?</span>'
+							: data.value[i][j]}
+						</td>
+					`).join('')}</tr>
+				`).join('')}
+			</table></div>`;
+		return;
+	}
 	switch (data.type) {
 		case "int": case "float": case "string": case "bool":
 			document.getElementById("debug").innerHTML += `
-			<table class="variable ${data.type}" data-id="${id}" data-assigned="false">
+			<div class="variable ${data.type}"><table data-id="${id}" data-assigned="false">
 				<tr><th>${id}</th></tr>
-				<tr><td>${data.value === undefined ? '?' : data.value}</td></tr>
-			</table>`;
+				<tr><td>${ data.value === undefined ?
+					'<span style="color:rgba(255,255,255,0.3)">?</span>' : data.value
+				}</td></tr>
+			</table></div>`;
 		break;
 	}
 };
 
 Environment.on_change = async (id, data) => {
-	const last = document.querySelector(`.variable[data-assigned="true"]`);
+	const last = document.querySelector(`.variable > table[data-assigned="true"]`);
 	if (last) last.setAttribute("data-assigned", "false");
-	const variable = document.querySelector(`.variable[data-id="${id}"]`);
+	const variable = document.querySelector(`.variable > table[data-id="${id}"]`);
 	if (variable) variable.querySelector("td").textContent = (
 		data.value === undefined ? '?' : data.value
 	);

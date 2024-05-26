@@ -6,6 +6,25 @@ class Value {
 		this.value = value;
 		this.type = type;
 	}
+	get dimensions() {
+		if (!Array.isArray(this.value)) return 0;
+		let cursor = this.value, dimensions = 1;
+		while (Array.isArray(cursor[0])) {
+			dimensions++;
+			cursor = cursor[0];
+		}
+		return dimensions;
+	}
+	get sizes() {
+		if (!Array.isArray(this.value)) return [];
+		let cursor = this.value, sizes = [ cursor.length ];
+		while (Array.isArray(cursor[0])) {
+			sizes.push(cursor.length);
+			cursor = cursor[0];
+		}
+		return sizes;
+	}
+	get base() { return this.type.replace(/\[.*\]/, ""); }
 	toString() {
 		if (this.type === "char") return String.fromCharCode(this.value);
 		return this.value.toString();

@@ -177,32 +177,47 @@ header {
 }
 
 .variable {
-	border-radius: 4px;
-	padding: 4px 8px;
+	border-radius: 5px;
+	padding: 12px;
 	margin: 10px;
-	height: 60px;
-	min-width: 70px;
-	text-overflow: ellipsis;
+	min-height: 60px;
+	min-width: 60px;
 	border: 2px solid transparent;
 	transition: all 0.2s linear;
+}
+
+.variable table {
+	border-collapse: collapse;
+	min-width: 60px;
+	min-height: 60px;
 }
 
 .variable[data-assigned="true"] { border-color: #fff; }
 
 .variable th, .variable td {
-	padding: 5px 0;
+	padding: 5px 8px;
 	text-overflow: ellipsis;
 	overflow: hidden;
 	max-width: 150px;
+	vertical-align: middle;
 }
 
 .variable th {
 	text-align: left;
-	color: rgba(255, 255, 255, 0.5);
+	color: rgba(255, 255, 255, 0.9);
+	height: 25px;
+	vertical-align: middle;
+	padding-top: 0;
 }
 .variable td {
 	font-family: monospace;
 	text-align: center;
+}
+
+.array td {
+	height: 40px;
+	width: 60px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .white { color: #fff; }
