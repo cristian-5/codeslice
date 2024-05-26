@@ -470,10 +470,107 @@ class If extends Statement {
 		this.els = els;
 	}
 	async execute() {
-		if (await this.condition.execute().value) await this.then.execute();
+		const condition = await this.condition.execute();
+		if (condition.type !== "bool" && condition.type !== "int")
+			throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+		if (condition.value) await this.then.execute();
 		else if (this.els) await this.els.execute();
 	}
 
+}
+
+class While extends Statement {
+	constructor(keyword, condition, block) {
+		super(keyword.start, block.end);
+		this.condition = condition;
+		this.block = block;
+	}
+	async execute() {
+		let condition = await this.condition.execute();
+		if (condition.type !== "bool" && condition.type !== "int")
+			throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+		while (condition.clone().value) {
+			try { await this.block.execute(); }
+			catch (e) {
+				if (e instanceof BreakException) break;
+				if (e instanceof ContinueException) continue;
+				else throw e;
+			}
+			condition = await this.condition.execute();
+		}
+	}
+}
+
+class DoWhile extends Statement {
+	constructor(keyword, block, condition) {
+		super(keyword.start, condition.end);
+		this.block = block;
+		this.condition = condition;
+	}
+	async execute() {
+		let condition;
+		do {
+			try { await this.block.execute(); }
+			catch (e) {
+				if (e instanceof BreakException) break;
+				if (e instanceof ContinueException) continue;
+				else throw e;
+			}
+			condition = await this.condition.execute();
+			if (condition.type !== "bool" && condition.type !== "int")
+				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+		} while (condition.clone().value);
+	}
+}
+
+class For extends Statement {
+	constructor(keyword, init, condition, increment, block) {
+		super(keyword.start, block.end);
+		this.init = init;
+		this.condition = condition;
+		this.increment = increment;
+		this.block = block;
+	}
+	async execute() {
+		Environment.open();
+		if (this.init) await this.init.execute();
+		let condition;
+		if (this.condition) {
+			condition = await this.condition.execute();
+			if (condition.type !== "bool" && condition.type !== "int")
+				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+		}
+		while (!this.condition || condition.clone().value) {
+			try { await this.block.execute(); }
+			catch (e) {
+				if (e instanceof BreakException) break;
+				if (e instanceof ContinueException) continue;
+				else throw e;
+			}
+			if (this.increment) await this.increment.execute();
+			if (this.condition) condition = await this.condition.execute();
+		}
+		Environment.close();
+	}
+
+}
+
+class BreakException { }
+class Break extends Statement {
+	constructor(keyword) {
+		super(keyword.position, keyword.position + keyword.lexeme.length);
+		this.keyword = keyword;
+	}
+	async execute() { throw new BreakException(); }
+}
+
+class ContinueException { }
+class Continue extends Statement {
+	constructor(keyword) {
+		super(keyword.position, keyword.position + keyword.lexeme.length);
+		this.keyword = keyword;
+	}
+	async execute() { throw new ContinueException(); }
 }
 
 class Cout extends Statement {

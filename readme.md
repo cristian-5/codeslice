@@ -28,9 +28,12 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] If Statements
 - [x] Cin, Cout Statements
 - [x] Function Calls
+- [x] Array, Matrix Declarations
+- [x] Array, Matrix Subscript
+- [x] While, Do While Cycles
+- [x] Break, Continue Statements
+- [x] For Cycles
 - [ ] Automatic Type Casting
-- [ ] While, Do While Cycles
-- [ ] Break, Continue Statements
-- [ ] For Cycles
-- [ ] Array, Matrix Declarations
-- [ ] Array, Matrix Subscript
+- [ ] Direct cin of Arrays
+- [ ] `++` and `--` Operators
+- [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators

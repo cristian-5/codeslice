@@ -200,7 +200,7 @@ class Parser {
 	}
 	// <statement> := <declaration> ';'
 	//              | <cout> | <cin>
-	//			    | <if>
+	//			    | <if> | <while> | <dowhile>
 	//              | <expression> ';'
 	#statement() {
 		let e;
@@ -208,9 +208,20 @@ class Parser {
 			e = this.#declaration();
 			this.#consume("operator", ";");
 		}
-		else if (this.#check("keyword", "cout")) e = this.#cout();
-		else if (this.#check("keyword", "cin"))  e = this.#cin();
-		else if (this.#check("keyword", "if"))   e = this.#if();
+		else if (this.#check("keyword", "cout"))  e = this.#cout();
+		else if (this.#check("keyword", "cin"))   e = this.#cin();
+		else if (this.#check("keyword", "if"))    e = this.#if();
+		else if (this.#check("keyword", "while")) e = this.#while();
+		else if (this.#check("keyword", "do"))    e = this.#dowhile();
+		else if (this.#check("keyword", "for"))   e = this.#for();
+		else if (this.#match("keyword", "break")) {
+			e = new Break(this.#previous());
+			this.#consume("operator", ";");
+		}
+		else if (this.#match("keyword", "continue")) {
+			e = new Continue(this.#previous());
+			this.#consume("operator", ";");
+		}
 		else {
 			e = new Instruction(this.#expression());
 			this.#consume("operator", ";");
@@ -228,6 +239,40 @@ class Parser {
 		let els = null;
 		if (this.#match("keyword", "else")) els = this.#block();
 		return new If(i, condition, then, els);
+	}
+
+	#while() {
+		const w = this.#consume("keyword", "while");
+		this.#consume("operator", "(");
+		const condition = this.#expression();
+		this.#consume("operator", ")");
+		const block = this.#block();
+		return new While(w, condition, block);
+	}
+
+	#dowhile() {
+		const d = this.#consume("keyword", "do");
+		const block = this.#block();
+		this.#consume("keyword", "while");
+		this.#consume("operator", "(");
+		const condition = this.#expression();
+		this.#consume("operator", ")");
+		this.#consume("operator", ";");
+		return new DoWhile(d, block, condition);
+	}
+
+	#for() {
+		const f = this.#consume("keyword", "for");
+		this.#consume("operator", "(");
+		let init = null, condition = null, update = null;
+		if (!this.#check("operator", ";")) init = this.#declaration();
+		this.#consume("operator", ";");
+		if (!this.#check("operator", ";")) condition = this.#expression();
+		this.#consume("operator", ";");
+		if (!this.#check("operator", ")")) update = this.#expression();
+		this.#consume("operator", ")");
+		const block = this.#block();
+		return new For(f, init, condition, update, block);
 	}
 
 	// <cout> := "cout" << <expression> ( << <expression> )*

@@ -87,6 +87,7 @@ const EN_Errors = {
 	ISD: "Invalid subscription dimensions, expected % but % found",
 	IST: "Invalid subscription type, expected int but % found",
 	IOB: "Index % out of bounds",
+	BOO: "Expected bool expression but % found",
 };
 
 let Errors = EN_Errors;

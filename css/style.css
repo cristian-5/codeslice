@@ -195,6 +195,7 @@ header {
 .variable[data-assigned="true"] { border-color: #fff; }
 
 .variable th, .variable td {
+	font-family: monospace;
 	padding: 5px 8px;
 	text-overflow: ellipsis;
 	overflow: hidden;
@@ -209,10 +210,7 @@ header {
 	vertical-align: middle;
 	padding-top: 0;
 }
-.variable td {
-	font-family: monospace;
-	text-align: center;
-}
+.variable td { text-align: center; }
 
 .array td {
 	height: 40px;
