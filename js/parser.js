@@ -1,6 +1,4 @@
 
-Array.prototype.top = function() { return this[this.length - 1]; };
-
 const digit = c => c >= '0' && c <= '9';
 const letter = c =>(c >= 'a' && c <= 'z') ||
 	(c >= 'A' && c <= 'Z') || c === '_';
@@ -168,20 +166,26 @@ class Parser {
 		while (!this.#end()) e.push(this.#block());
 		return new Program(e, this.code);
 	}
-	// <declaration> := <type> <identifier> [ '=' <expression> ]
+	// <declaration> := <type> <partial> { ',' <partial> }
+	// <partial> := <identifier> [ { '[' <expression> ']' } | '=' <expression> ]
 	#declaration() {
 		const type = this.#consume("type");
-		const id = this.#consume("identifier");
-		if (this.#match("operator", '='))
-			return new Declaration(type, id, this.#expression());
-		else if (this.#match("operator", '[')) {
-			const size = this.#expression();
-			this.#consume("operator", ']');
-			const a = new Declaration(type, id);
-			a.size = size;
-			return a;
+		function partial() {
+			const id = this.#consume("identifier");
+			if (this.#match("operator", '='))
+				return { id, exp: this.#expression() };
+			else if (this.#check("operator", '[')) {
+				const sizes = [];
+				while (this.#match("operator", '[')) {
+					sizes.push(this.#expression());
+					this.#consume("operator", ']');
+				}
+				return { id, exp: null, sizes };
+			} else return { id, exp: null };
 		}
-		else return new Declaration(type, id);
+		const decls = [ partial.call(this) ];
+		while (this.#match("operator", ",")) decls.push(partial.call(this));
+		return new Declaration(type, decls);
 	}
 	// <block> := '{' { <statement> } '}'
 	#block() {
@@ -194,7 +198,7 @@ class Parser {
 			return new Block(lbrace, statements, rbrace);
 		} else return this.#statement();
 	}
-	// <statement> := <declaration>
+	// <statement> := <declaration> ';'
 	//              | <cout> | <cin>
 	//			    | <if>
 	//              | <expression> ';'

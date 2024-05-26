@@ -81,6 +81,8 @@ const EN_Errors = {
 	CST: "Incompatible types % and % require casting",
 	CIX: "Invalid cin expression",
 	INI: "Use of unititialized variable",
+	ASI: "Array sizes must be of int type but % found",
+	AS0: "Array size must be greater than 0 but % found",
 };
 
 let Errors = EN_Errors;

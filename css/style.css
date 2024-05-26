@@ -178,10 +178,10 @@ header {
 
 .variable {
 	border-radius: 4px;
-	padding: 10px;
+	padding: 4px 8px;
 	margin: 10px;
 	height: 60px;
-	min-width: 65px;
+	min-width: 70px;
 	text-overflow: ellipsis;
 	border: 2px solid transparent;
 	transition: all 0.2s linear;
@@ -190,6 +190,7 @@ header {
 .variable[data-assigned="true"] { border-color: #fff; }
 
 .variable th, .variable td {
+	padding: 5px 0;
 	text-overflow: ellipsis;
 	overflow: hidden;
 	max-width: 150px;

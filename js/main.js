@@ -15,8 +15,6 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e =
 	terminal.options.theme = structuredClone(e.matches ? theme.dark : theme.light);
 });
 
-const wait = ms => new Promise(r => setTimeout(() => r(true), ms));
-
 let AST = null;
 
 async function compile(show_error = false) {

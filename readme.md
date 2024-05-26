@@ -21,6 +21,7 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] Lexing and Parsing
 - [x] Better Syntax Errors
 - [x] Variable Declaration
+- [x] Multiple Declarations
 - [x] Variable Assignment
 - [x] Scope Shadowing
 - [x] Expressions
@@ -33,4 +34,3 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [ ] For Cycles
 - [ ] Array, Matrix Declarations
 - [ ] Array, Matrix Subscript
-- [ ] Multiple Declarations

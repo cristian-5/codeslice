@@ -81,7 +81,8 @@ class Assignment extends Expression {
 		this.right = right;
 	}
 	async execute() {
-		const value = structuredClone(await this.right.execute());
+		const right = await this.right.execute();
+		const value = new Value(structuredClone(right.value), right.type);
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
 			throw new CodeError(Errors.CST, [ this.start, this.end ], [
@@ -355,26 +356,39 @@ class Statement {
 }
 
 class Declaration extends Statement {
-	constructor(type, identifier, expression) {
-		super(type.position, expression ? expression.end :
-			identifier.position + identifier.lexeme.length);
-		this.identifier = identifier;
+	constructor(type, declarations) {
+		const last = declarations[declarations.length - 1];
+		super(type.position, last.exp ? last.exp.end : (
+			last.sizes ? last.sizes.end : last.id.position + last.id.lexeme.length
+		));
 		this.type = type;
-		this.expression = expression;
-		this.size = 1;
+		this.declarations = declarations;
 	}
 	async execute() {
-		let value;
-		if (this.expression) {
-			value = await this.expression.execute();
-			if (value.type !== this.type.lexeme)
-				throw new CodeError(Errors.CST, [ this.start, this.end ], [
-					this.type.lexeme, value.type
-				]);
-		} else if (this.size > 1) {
-			value = new Value(new Array(this.size), this.type.lexeme);
-		} else value = new Value(undefined, this.type.lexeme);
-		Environment.current.define(this.identifier, value);
+		for (const d of this.declarations) {
+			let value;
+			if (d.exp) { // assignment
+				value = await d.exp.execute();
+				if (value.type !== this.type.lexeme)
+					throw new CodeError(Errors.CST, [ this.start, this.end ], [
+						this.type.lexeme, value.type
+					]);
+			} else if (d.sizes) { // array
+				const sizes = await Promise.all(d.sizes.map(s => s.execute()));
+				for (let i = 0; i < sizes.length; i++)
+					if (sizes[i].type !== "int")
+						throw new CodeError(Errors.ASI, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].type ]);
+					else if (sizes[i].value <= 0)
+						throw new CodeError(Errors.AS0, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].value ]);
+				value = new Value(
+					Array.make(sizes.map(s => s.value)),
+					this.type.lexeme + d.sizes.map(s => `[${s.value}]`).join("")
+				);
+			} else { // simple declaration
+				value = new Value(undefined, this.type.lexeme);
+			}
+			Environment.current.define(d.id, value);
+		}
 	}
 }
 
