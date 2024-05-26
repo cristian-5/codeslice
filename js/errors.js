@@ -83,6 +83,10 @@ const EN_Errors = {
 	INI: "Use of unititialized variable",
 	ASI: "Array sizes must be of int type but % found",
 	AS0: "Array size must be greater than 0 but % found",
+	SNA: "Subscript not allowed for non-array expression",
+	ISD: "Invalid subscription dimensions, expected % but % found",
+	IST: "Invalid subscription type, expected int but % found",
+	IOB: "Index % out of bounds",
 };
 
 let Errors = EN_Errors;

@@ -51,11 +51,6 @@ async function run() {
 			return;
 		}
 		terminal.write(e.colorful_message);
-		monaco.editor.setModelMarkers(editor.getModel(), "owner", [{
-			startLineNumber: e.position[0], startColumn: e.position[1],
-			endLineNumber: e.position[0], endColumn: e.position[1] + e.position[3],
-			message: e.message, severity: monaco.MarkerSeverity.Error
-		}]);
 	}
 }
 
@@ -77,8 +72,7 @@ Environment.on_define = async (id, data) => {
 				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
 				<tr>${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<td title="(${i})">${data.value[i] === undefined ?
-						'<span style="color:rgba(255,255,255,0.3)">?</span>' :
-						data.value[i]}
+						'<span class="w-3">?</span>' : data.value[i]}
 					</td>
 				`).join('')}</tr>
 			</table></div>`;
@@ -90,8 +84,7 @@ Environment.on_define = async (id, data) => {
 				${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<tr>${Array.from({ length: data.sizes[1] }).map((_, j) => `
 						<td title="(${i}, ${j})">${data.value[i][j] === undefined ?
-							'<span style="color:rgba(255,255,255,0.3)">?</span>'
-							: data.value[i][j]}
+							'<span class="w-3">?</span>' : data.value[i][j]}
 						</td>
 					`).join('')}</tr>
 				`).join('')}
@@ -104,7 +97,7 @@ Environment.on_define = async (id, data) => {
 			<div class="variable ${data.type}"><table data-id="${id}" data-assigned="false">
 				<tr><th>${id}</th></tr>
 				<tr><td>${ data.value === undefined ?
-					'<span style="color:rgba(255,255,255,0.3)">?</span>' : data.value
+					'<span class="w-3">?</span>' : data.value
 				}</td></tr>
 			</table></div>`;
 		break;
@@ -112,11 +105,32 @@ Environment.on_define = async (id, data) => {
 };
 
 Environment.on_change = async (id, data) => {
-	const last = document.querySelector(`.variable > table[data-assigned="true"]`);
+	const last = document.querySelector(`table[data-assigned="true"]`);
 	if (last) last.setAttribute("data-assigned", "false");
-	const variable = document.querySelector(`.variable > table[data-id="${id}"]`);
-	if (variable) variable.querySelector("td").textContent = (
-		data.value === undefined ? '?' : data.value
-	);
+	const variable = document.querySelector(`table[data-id="${id}"]`);
+	if (!variable) return;
 	variable.setAttribute("data-assigned", "true");
+	switch (data.dimensions) {
+		case 0:
+			variable.querySelector("td").innerHTML =
+				data.value === undefined ?
+				'<span class="w-3">?</span>' :
+				data.value;
+		return;
+		case 1:
+			for (let i = 0; i < data.sizes[0]; i++)
+				variable.querySelectorAll("td")[i].innerHTML =
+					data.value[i] === undefined ?
+					'<span class="w-3">?</span>' :
+					data.value[i];
+		return;
+		case 2:
+			for (let i = 0; i < data.sizes[0]; i++)
+				for (let j = 0; j < data.sizes[1]; j++)
+					variable.querySelectorAll("td")[i * data.sizes[1] + j].innerHTML =
+						data.value[i][j] === undefined ?
+						'<span class="w-3">?</span>' :
+						data.value[i][j];
+		return;
+	}
 };

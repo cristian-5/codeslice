@@ -29,6 +29,7 @@ class Value {
 		if (this.type === "char") return String.fromCharCode(this.value);
 		return this.value.toString();
 	}
+	clone() { return new Value(structuredClone(this.value), this.type); }
 }
 
 class Environment {
@@ -100,8 +101,15 @@ class Assignment extends Expression {
 		this.right = right;
 	}
 	async execute() {
+		if (this.left instanceof Subscript) {
+			const right = await this.right.execute();
+			const id = await this.left.execute(right.clone(), this.start, this.end);
+			const current = Environment.current.get(id);
+			Environment.current.assign(id, current);
+			return right;
+		}
 		const right = await this.right.execute();
-		const value = new Value(structuredClone(right.value), right.type);
+		const value = right.clone();
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
 			throw new CodeError(Errors.CST, [ this.start, this.end ], [
@@ -354,14 +362,35 @@ class Call extends Expression {
 }
 
 class Subscript extends Expression {
-	constructor(left, index, expression) {
-		super(left.start, expression ? expression.end : index.end);
+	constructor(left, indexes, rpar) {
+		super(left.start, rpar.position + 1);
 		this.left = left;
-		this.index = index;
-		this.expression = expression;
+		this.indexes = indexes;
 	}
-	async execute() {
-
+	async execute(set, start, end) {
+		if (!(this.left instanceof Identifier))
+			throw new CodeError(Errors.SNA, [ this.start, this.end ]);
+		let id = Environment.current.get(this.left.name);
+		if (id.dimensions === 0) throw new CodeError(Errors.SNA, [ this.start, this.end ]);
+		if (this.indexes.length !== id.dimensions)
+			throw new CodeError(Errors.ISD, [ this.start, this.end ], [ id.dimensions, this.indexes.length ]);
+		const indexes = await Promise.all(this.indexes.map(i => i.execute()));
+		for (let i = 0; i < indexes.length; i++)
+			if (indexes[i].type !== "int")
+				throw new CodeError(Errors.IST, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].type ]);
+			else if (indexes[i].value < 0 || indexes[i].value >= id.sizes[i])
+				throw new CodeError(Errors.IOB, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].value ]);
+		if (set) {
+			let cursor = id.value;
+			for (let i = 0; i < indexes.length - 1; i++) cursor = cursor[indexes[i].value];
+			if (set.type !== id.base)
+				throw new CodeError(Errors.CST, [ start, end ], [ id.base, set.type ]);
+			cursor[indexes.top().value] = set.value;
+			return this.left.name;
+		}
+		let cursor = id.value;
+		for (const i of indexes) cursor = cursor[i.value];
+		return new Value(structuredClone(cursor), id.base);
 	}
 }
 
@@ -376,7 +405,7 @@ class Statement {
 
 class Declaration extends Statement {
 	constructor(type, declarations) {
-		const last = declarations[declarations.length - 1];
+		const last = declarations.top();
 		super(type.position, last.exp ? last.exp.end : (
 			last.sizes ? last.sizes.end : last.id.position + last.id.lexeme.length
 		));
@@ -450,7 +479,7 @@ class If extends Statement {
 class Cout extends Statement {
 	static print = console.log;
 	constructor(c, expressions) {
-		super(expressions[0].start, expressions[expressions.length - 1].end);
+		super(expressions[0].start, expressions.top().end);
 		this.expressions = expressions;
 		this.c = c;
 	}
@@ -468,7 +497,7 @@ class Cin extends Statement {
 	static prompt = async () => prompt();
 	static input_queue = [];
 	constructor(c, expressions) {
-		super(expressions[0].start, expressions[expressions.length - 1].end);
+		super(expressions[0].start, expressions.top().end);
 		this.expressions = expressions;
 		this.c = c;
 	}

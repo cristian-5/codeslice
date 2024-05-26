@@ -220,6 +220,16 @@ header {
 	border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
+.w-1 { color: rgba(255, 255, 255, 0.1); }
+.w-2 { color: rgba(255, 255, 255, 0.2); }
+.w-3 { color: rgba(255, 255, 255, 0.3); }
+.w-4 { color: rgba(255, 255, 255, 0.4); }
+.w-5 { color: rgba(255, 255, 255, 0.5); }
+.w-6 { color: rgba(255, 255, 255, 0.6); }
+.w-7 { color: rgba(255, 255, 255, 0.7); }
+.w-8 { color: rgba(255, 255, 255, 0.8); }
+.w-9 { color: rgba(255, 255, 255, 0.9); }
+
 .white { color: #fff; }
 .black { color: #111; }
 .red { color: rgb(239, 71, 67) }

@@ -266,7 +266,8 @@ class Parser {
 		if (this.#match("operator", [ '=', "+=", "-=", "*=", "/=", "%=" ])) {
 			const op = this.#previous();
 			const value = this.#assignment();
-			if (e instanceof Identifier) return new Assignment(e, op, value);
+			if (e instanceof Identifier || e instanceof Subscript)
+				return new Assignment(e, op, value);
 			throw new CodeError(Errors.IAT, [ e.start, e.end ]);
 		} else return e;
 	}
@@ -321,7 +322,7 @@ class Parser {
 	// <call> := <subscript> ( '(' <arguments>? ')' )*
 	// <arguments> := <expression> ( ',' <expression> )*
 	#call() {
-		let e = this.#primary();
+		let e = this.#subscript();
 		while (this.#match("operator", "(")) {
 			const lpar = this.#previous(), args = [];
 			if (!this.#check("operator", ")")) {
@@ -335,12 +336,13 @@ class Parser {
 	// <subscript> := <primary> ('[' <expression> ']') [ '=' <expression> ]
 	#subscript() {
 		let e = this.#primary();
-		if (this.#match("operator", "[")) {
-			const index = this.#expression();
-			this.#consume("operator", "]");
-			if (this.#match("operator", "="))
-				e = new Subscript(e, index, this.#expression());
-			else e = new Subscript(e, index);
+		if (this.#check("operator", "[")) {
+			const indexes = [];
+			while (this.#match("operator", "[")) {
+				indexes.push(this.#expression());
+				this.#consume("operator", "]");
+			}
+			e = new Subscript(e, indexes, this.#previous());
 		}
 		return e;
 	}
