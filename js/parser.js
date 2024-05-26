@@ -230,7 +230,7 @@ class Parser {
 	#cout() {
 		const c = this.#consume("keyword", "cout");
 		if (!this.#check("operator", "<<"))
-			throw new CodeError(Errors.COU, this.#peek());
+			throw new CodeError(Errors.COU, this.#peek() || this.#previous());
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
 		this.#consume("operator", ";");
@@ -240,7 +240,7 @@ class Parser {
 	#cin() {
 		const c = this.#consume("keyword", "cin");
 		if (!this.#check("operator", ">>"))
-			throw new CodeError(Errors.CIN, this.#peek());
+			throw new CodeError(Errors.CIN, this.#peek() || this.#previous());
 		let e = [];
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();

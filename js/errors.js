@@ -64,6 +64,8 @@ const EN_Errors = {
 	CIN: "Expected >> after cin",
 	EXT: "Expected missing %",
 	EXM: "Expected missing % \"%\"",
+	UFN: "Unexpected function %",
+	FNF: "Function % does not accept the given arguments",
 	// ==== Runtime errors ===========================
 	DBZ: "Division by zero",
 	VRD: "Variable redefinition %",

@@ -269,12 +269,67 @@ class PostfixExpression extends Expression {
 }
 
 class Call extends Expression {
+	static #functions = {
+		"sqrt": [
+			{ args: [ "float" ], run: Math.sqrt, ret: "float" },
+			{ args: [ "int" ],   run: Math.sqrt, ret: "float" },
+		],
+		"abs": [
+			{ args: [ "float" ], run: Math.abs, ret: "float" },
+			{ args: [ "int" ],   run: Math.abs, ret: "float" },
+		],
+		"pow": [
+			{ args: [ "float", "float" ], run: Math.pow, ret: "float" },
+			{ args: [ "int", "int" ],     run: Math.pow, ret: "float" },
+		],
+		"sin": [
+			{ args: [ "float" ], run: Math.sin, ret: "float" },
+			{ args: [ "int" ],   run: Math.sin, ret: "float" },
+		],
+		"cos": [
+			{ args: [ "float" ], run: Math.cos, ret: "float" },
+			{ args: [ "int" ],   run: Math.cos, ret: "float" },
+		],
+		"tan": [
+			{ args: [ "float" ], run: Math.tan, ret: "float" },
+			{ args: [ "int" ],   run: Math.tan, ret: "float" },
+		],
+		"exp": [
+			{ args: [ "float" ], run: Math.exp, ret: "float" },
+			{ args: [ "int" ],   run: Math.exp, ret: "float" },
+		],
+		"log": [
+			{ args: [ "float" ], run: Math.log, ret: "float" },
+			{ args: [ "int" ],   run: Math.log, ret: "float" },
+		],
+		"floor": [ { args: [ "float" ], run: Math.floor, ret: "float" } ],
+		"ceil": [ { args: [ "float" ], run: Math.ceil, ret: "float" } ],
+		"round": [ { args: [ "float" ], run: Math.round, ret: "float" } ],
+		"rand": [ { args: [], run: () => Math.random() * 0x7FFFFFFF, ret: "int" } ],
+		"time": [ { args: [], run: () => Date.now(), ret: "int" } ],
+	};
 	constructor(callee, lpar, rpar, args) {
 		super(callee.start, rpar.position + 1);
 		this.callee = callee;
 		this.lpar = lpar;
 		this.rpar = rpar;
 		this.args = args;
+	}
+	async execute() {
+		const name = this.callee.name.lexeme;
+		if (!Call.#functions[name])
+			throw new CodeError(Errors.UFN, this.callee.name, [ name ]);
+		const args = await Promise.all(this.args.map(a => a.execute()));
+		const arg_types = args.map(a => a.type);
+		const func = Call.#functions[name].find(
+			f => f.args.length === this.args.length &&
+			f.args.every((t, i) => t === arg_types[i])
+		);
+		if (!func) throw new CodeError(Errors.FNF, [ this.start, this.end ], [ name ]);
+		for (let i = 0; i < args.length; i++)
+			if (args[i].type !== func.args[i])
+				throw new CodeError(Errors.CST, [ this.args[i].start, this.args[i].end ], [ func.args[i], args[i].type ]);
+		return new Value(func.run(...args.map(a => a.value)), func.ret);
 	}
 }
 

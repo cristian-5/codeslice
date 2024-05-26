@@ -44,7 +44,7 @@ async function compile(show_error = false) {
 }
 
 async function run() {
-	if (!AST) await compile(true);
+	await compile(true);
 	terminal.reset();
 	document.getElementById("debug").innerHTML = ""; // clear debug view
 	try { await AST.execute(); } catch (e) {
