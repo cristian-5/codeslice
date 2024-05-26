@@ -22,7 +22,7 @@
 	<nav>
 		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c+- Interpreter</h1>
 		<div class="cassette">
-			<button onclick="check()"><i class="fa-solid fa-check gray"></i></button>
+			<button onclick="compile(true)"><i class="fa-solid fa-check gray"></i></button>
 			<button onclick="run()"><i class="fa-solid fa-play gray" style="margin:0 8px 0 0"></i> Run</button>
 			<button onclick="download()" disabled><i class="fa-solid fa-floppy-disk gray"></i></button>
 			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open gray"></i></button>
@@ -74,13 +74,21 @@
 		window.terminal.input_data = "";
 		window.terminal.onKey(e => {
 			if (!window.terminal.input_enabled) return;
-			if (e.key === "\r") {
-				window.terminal.input_ready = true;
-				window.terminal.input_enabled = false;
-				window.terminal.write('\n');
-			} else {
-				window.terminal.input_data += e.key;
-				window.terminal.write(e.key);
+			switch (e.key) {
+				case "\r": case "\n":
+					window.terminal.input_ready = true;
+					window.terminal.input_enabled = false;
+					window.terminal.write('\n');
+				break;
+				case "\b": case "\x7f": // backspace
+					if (window.terminal.input_data.length === 0) return;
+					window.terminal.write('\b \b');
+					window.terminal.input_data = window.terminal.input_data.slice(0, - 1);
+				break;
+				default:
+					window.terminal.input_data += e.key;
+					window.terminal.write(e.key);
+				break;
 			}
 		});
 		
