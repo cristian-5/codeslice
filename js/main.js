@@ -71,7 +71,7 @@ Environment.on_define = async (id, data) => {
 			<div class="variable ${data.base}"><table class="array" data-id="${id}">
 				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
 				<tr>${Array.from({ length: data.sizes[0] }).map((_, i) => `
-					<td title="(${i})">${data.value[i] === undefined ?
+					<td title="[${i}]">${data.value[i] === undefined ?
 						'<span class="w-3">?</span>' : data.value[i]}
 					</td>
 				`).join('')}</tr>
@@ -83,7 +83,7 @@ Environment.on_define = async (id, data) => {
 				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
 				${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<tr>${Array.from({ length: data.sizes[1] }).map((_, j) => `
-						<td title="(${i}, ${j})">${data.value[i][j] === undefined ?
+						<td title="[${i}][${j}]">${data.value[i][j] === undefined ?
 							'<span class="w-3">?</span>' : data.value[i][j]}
 						</td>
 					`).join('')}</tr>

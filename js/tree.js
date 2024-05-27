@@ -17,8 +17,8 @@ class Value {
 	}
 	get sizes() {
 		if (!Array.isArray(this.value)) return [];
-		let cursor = this.value, sizes = [ cursor.length ];
-		while (Array.isArray(cursor[0])) {
+		let cursor = this.value, sizes = [ ];
+		while (Array.isArray(cursor)) {
 			sizes.push(cursor.length);
 			cursor = cursor[0];
 		}

@@ -28,6 +28,10 @@ require([ "vs/editor/editor.main" ], function() {
 		folding: {
 			markers: { start: /\{/, end: /\}/ },
 			offSide: true
+		},
+		comments: {
+			blockComment: [ '/*', '*/' ],
+			lineComment: '//'
 		}
 	});
 	// FIX: multiline comments highlighting
@@ -65,13 +69,12 @@ require([ "vs/editor/editor.main" ], function() {
 				[/<<|>>/, "delimiter.angle"],
 				[/\s+/, "white"],
 				[/\/\/.*$/, "comment"],
+				//[/\/\*.*\*\//, "comment"],
 				[/\//, "delimiter"],
 			]
 		}
 	});
 
-	const cppModel = monaco.editor.createModel("");
-	cppModel.updateOptions({ insertSpaces: false, tabSize: 4 });
 	window.editor = monaco.editor.create(document.getElementById("monaco"), {
 		value: localStorage.getItem("code") || "\ncout << \"Hello, world!\" << endl;\n",
 		language: "c+-",
@@ -82,6 +85,7 @@ require([ "vs/editor/editor.main" ], function() {
 		minimap: { enabled: false },
 		fontSize: 16,
 		automaticLayout: true,
+		insertSpaces: false,
 		theme: darkMode() ? "vs-dark" : "vs"
 	});
 	editor.last_typing = 0;
