@@ -88,6 +88,7 @@ const EN_Errors = {
 	IST: "Invalid subscription type, expected int but % found",
 	IOB: "Index % out of bounds",
 	BOO: "Expected bool expression but % found",
+	MLI: "Max loop iterations exceeded",
 };
 
 let Errors = EN_Errors;

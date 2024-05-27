@@ -479,6 +479,8 @@ class If extends Statement {
 
 }
 
+const MAX_LOOP_ITERATIONS = 100000;
+
 class While extends Statement {
 	constructor(keyword, condition, block) {
 		super(keyword.start, block.end);
@@ -489,7 +491,8 @@ class While extends Statement {
 		let condition = await this.condition.execute();
 		if (condition.type !== "bool" && condition.type !== "int")
 			throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
-		while (condition.clone().value) {
+		let count = 0;
+		while (condition.clone().value && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
 			catch (e) {
 				if (e instanceof BreakException) break;
@@ -498,6 +501,8 @@ class While extends Statement {
 			}
 			condition = await this.condition.execute();
 		}
+		if (count >= MAX_LOOP_ITERATIONS)
+			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
 	}
 }
 
@@ -508,7 +513,7 @@ class DoWhile extends Statement {
 		this.condition = condition;
 	}
 	async execute() {
-		let condition;
+		let condition, count = 0;
 		do {
 			try { await this.block.execute(); }
 			catch (e) {
@@ -519,7 +524,9 @@ class DoWhile extends Statement {
 			condition = await this.condition.execute();
 			if (condition.type !== "bool" && condition.type !== "int")
 				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
-		} while (condition.clone().value);
+		} while (condition.clone().value && count++ < MAX_LOOP_ITERATIONS);
+		if (count >= MAX_LOOP_ITERATIONS)
+			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
 	}
 }
 
@@ -534,13 +541,13 @@ class For extends Statement {
 	async execute() {
 		Environment.open();
 		if (this.init) await this.init.execute();
-		let condition;
+		let condition, count = 0;
 		if (this.condition) {
 			condition = await this.condition.execute();
 			if (condition.type !== "bool" && condition.type !== "int")
 				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
 		}
-		while (!this.condition || condition.clone().value) {
+		while ((!this.condition || condition.clone().value) && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
 			catch (e) {
 				if (e instanceof BreakException) break;
@@ -550,6 +557,8 @@ class For extends Statement {
 			if (this.increment) await this.increment.execute();
 			if (this.condition) condition = await this.condition.execute();
 		}
+		if (count >= MAX_LOOP_ITERATIONS)
+			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
 		Environment.close();
 	}
 

@@ -32,7 +32,10 @@ async function compile(show_error = false) {
 			console.error(e);
 			return;
 		}
-		if (show_error) terminal.write(e.colorful_message);
+		if (show_error) {
+			terminal.reset();
+			terminal.write(e.colorful_message);
+		}
 		monaco.editor.setModelMarkers(editor.getModel(), "owner", [{
 			startLineNumber: e.position[0], startColumn: e.position[1],
 			endLineNumber: e.position[0], endColumn: e.position[1] + e.position[3],
@@ -50,7 +53,10 @@ async function run() {
 			console.error(e);
 			return;
 		}
-		terminal.write(e.colorful_message);
+		setTimeout(() => { // wait for terminal to flush
+			terminal.reset();
+			terminal.write(e.colorful_message);
+		}, 10);
 	}
 }
 
