@@ -86,6 +86,8 @@ require([ "vs/editor/editor.main" ], function() {
 		fontSize: 16,
 		automaticLayout: true,
 		insertSpaces: false,
+		stickyScroll: { enabled: false },
+		selectOnLineNumbers: true,
 		theme: darkMode() ? "vs-dark" : "vs"
 	});
 	editor.last_typing = 0;

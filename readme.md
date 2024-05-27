@@ -15,6 +15,8 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - Arrays have a fixed size but it does not need to be constant.
 - Precedence of compound operators (`+=`, `-=`, `*=`, `/=`, `%=`) is the same.
 - There is no type inference with the `auto` keyword.
+- There is no difference between `++i` and `i++`, they both `return i + 1`.
+- The `++` and `--` operators can't mutate array or matrix cells.
 
 ## Features
 
@@ -33,7 +35,7 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] While, Do While Cycles
 - [x] Break, Continue Statements
 - [x] For Cycles
+- [x] Operators `++`, `--` 
 - [ ] Automatic Type Casting
 - [ ] Direct cin of Arrays
-- [ ] `++` and `--` Operators
 - [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators

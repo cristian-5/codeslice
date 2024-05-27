@@ -275,13 +275,18 @@ class PrefixExpression extends Expression {
 		this.operator = operator;
 		this.right = right;
 	}
-	async execute() { // TODO: fix increment and decrement (mutation)
+	async execute() {
 		const r = await this.right.execute();
+		let key = this.operator.lexeme + r.type, value;
 		if (r.value === undefined)
-			throw new CodeError(Errors.INI, this.right.start, this.right.end);
-		let key = this.operator.lexeme + r.type;
-		if (key in PrefixExpression.#check)
-			return PrefixExpression.#check[key](r);
+			throw new CodeError(Errors.INI, [ this.right.start, this.right.end ]);
+		if (key in PrefixExpression.#check) {
+			value = PrefixExpression.#check[key](r);
+			if (![ "++", "--" ].includes(this.operator.lexeme)) return value;
+			if (this.right instanceof Identifier)
+				Environment.current.assign(this.right.name, value);
+			return value;
+		}
 		throw new CodeError(Errors.UPO, this.operator, [
 			this.operator.lexeme, r.type
 		]);
@@ -289,10 +294,30 @@ class PrefixExpression extends Expression {
 }
 
 class PostfixExpression extends Expression {
+	static #check = {
+		"int--":   a => new Value(a.value--, "int"),
+		"int++":   a => new Value(a.value++, "int"),
+		"char--":  a => new Value(a.value--, "int"),
+		"char++":  a => new Value(a.value++, "int"),
+		"float--": a => new Value(a.value--, "float"),
+		"float++": a => new Value(a.value++, "float"),
+	};
 	constructor(left, operator) {
 		super(left.start, operator.end);
 		this.left = left;
 		this.operator = operator;
+	}
+	async execute() {
+		const l = await this.left.execute();
+		if (l.value === undefined)
+			throw new CodeError(Errors.INI, [ this.left.start, this.left.end ]);
+		if (!this.left instanceof Identifier)
+			throw new CodeError(Errors.IAT, [ this.left.start, this.left.end ]);
+		let value = new Value(l.value, l.type);
+		if (this.operator.lexeme === "++") value.value++;
+		else value.value--;
+		Environment.current.assign(this.left.name, value);
+		return value;
 	}
 }
 

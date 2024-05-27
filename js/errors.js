@@ -80,7 +80,7 @@ const EN_Errors = {
 	CIT: "Invalid cin type %",
 	CST: "Incompatible types % and % require casting",
 	CIX: "Invalid cin expression",
-	INI: "Use of unititialized variable",
+	INI: "Use of unititialized memory area",
 	ASI: "Array sizes must be of int type but % found",
 	AS0: "Array size must be greater than 0 but % found",
 	SNA: "Subscript not allowed for non-array expression",
