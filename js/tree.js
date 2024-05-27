@@ -333,7 +333,7 @@ class Call extends Expression {
 		"floor": [ { args: [ "float" ], run: Math.floor, ret: "float" } ],
 		"ceil": [ { args: [ "float" ], run: Math.ceil, ret: "float" } ],
 		"round": [ { args: [ "float" ], run: Math.round, ret: "float" } ],
-		"rand": [ { args: [], run: () => Math.random() * 0x7FFFFFFF, ret: "int" } ],
+		"rand": [ { args: [], run: () => Math.floor(Math.random() * 0x7FFFFFFF), ret: "int" } ],
 		"time": [ { args: [], run: () => Date.now(), ret: "int" } ],
 	};
 	constructor(callee, lpar, rpar, args) {
