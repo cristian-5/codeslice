@@ -214,12 +214,16 @@ header {
 	vertical-align: middle;
 	padding-top: 0;
 }
-.variable td { text-align: center; }
+.variable td {
+	text-align: center;
+	user-select: none;
+}
 
 .array td {
 	height: 40px;
 	width: 60px;
 	border: 1px solid rgba(255, 255, 255, 0.2);
+	user-select: none;
 }
 
 .w-1 { color: rgba(255, 255, 255, 0.1); }

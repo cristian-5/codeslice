@@ -36,12 +36,10 @@
 <body>
 	
 	<nav>
-		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c+- Interpreter</h1>
+		<h1>🍰 Code SL<span style="color:#6e6e6e;">/</span>CE c+- Interpreter<sup style="color:#d20000;margin:0 5px">beta</sup></h1>
 		<div class="cassette">
 			<button onclick="compile(true)"><i class="fa-solid fa-check gray"></i></button>
 			<button onclick="run()"><i class="fa-solid fa-play gray" style="margin:0 8px 0 0"></i> Run</button>
-			<button onclick="download()" disabled><i class="fa-solid fa-floppy-disk gray"></i></button>
-			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open gray"></i></button>
 		</div>
 		<div class="hidden-buttons">
 			<select id="lang" onChange="Language.current = this.options[this.selectedIndex].value;">
