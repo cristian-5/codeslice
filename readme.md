@@ -2,6 +2,7 @@
 # Code SL/CE
 
 Web interpreter for `c+-`, made with ❤️ to help students understand code.
+https://cristian-5.github.io/codeslice/
 
 ### c+-
 
