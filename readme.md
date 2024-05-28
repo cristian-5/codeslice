@@ -1,13 +1,16 @@
 
 # Code SL/CE
 
-Web interpreter for `c+-`, made with ❤️ to help students understand code.\
+Web interpreter for `c+-`, made with ❤️ to help students.\
 https://cristian-5.github.io/codeslice/
 
-### c+-
+![Code Slice](/img/screen-1.png)
+
+### c+\-
 
 The language `c+-` is a dialect of `c++` with some minor differences:
 
+- No `#include` or preprocessor directives.
 - Namespaces like `std` are not necessary.
 - Simpler execution / compilation errors.
 - Dynamic type checking instead of static.
@@ -15,9 +18,8 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - There are no pointers, procedures, functions, classes, exceptions or objects.
 - Arrays have a fixed size but it does not need to be constant.
 - Precedence of compound operators (`+=`, `-=`, `*=`, `/=`, `%=`) is the same.
-- There is no type inference with the `auto` keyword.
 - There is no difference between `++i` and `i++`, they both `return i + 1`.
-- The `++` and `--` operators can't mutate array or matrix cells.
+- The `++` and `--` operators don't act on arrays or matrix cells.
 
 ## Features
 
@@ -28,15 +30,15 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] Variable Assignment
 - [x] Scope Shadowing
 - [x] Expressions
-- [x] If Statements
-- [x] Cin, Cout Statements
+- [x] `if` Statements
+- [x] `cin`, `cout` Statements
 - [x] Function Calls
 - [x] Array, Matrix Declarations
 - [x] Array, Matrix Subscript
-- [x] While, Do While Cycles
-- [x] Break, Continue Statements
-- [x] For Cycles
-- [x] Operators `++`, `--` 
+- [x] `while`, `do while` Cycles
+- [x] `break`, `continue` Statements
+- [x] `for` Cycles
+- [x] `++`, `--` Operators
 - [ ] Automatic Type Casting
-- [ ] Direct cin of Arrays
+- [ ] Direct `cin` of Array Elements
 - [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators
