@@ -99,9 +99,11 @@
 			if (!window.terminal.input_enabled) return;
 			switch (e.key) {
 				case "\r": case "\n":
-					window.terminal.input_ready = true;
-					window.terminal.input_enabled = false;
 					window.terminal.write('\n');
+					if (window.terminal.input_data.length > 0) {
+						window.terminal.input_ready = true;
+						window.terminal.input_enabled = false;
+					}
 				break;
 				case "\b": case "\x7f": // backspace
 					if (window.terminal.input_data.length === 0) return;

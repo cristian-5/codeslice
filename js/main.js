@@ -113,7 +113,7 @@ Environment.on_define = async (id, data) => {
 	switch (data.type) {
 		case "int": case "float": case "string": case "bool":
 			document.getElementById("debug").innerHTML += `
-			<div class="variable ${data.type}"><table data-id="${id}" data-assigned="false">
+			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
 					'<span class="w-3">?</span>' : data.value
@@ -125,11 +125,8 @@ Environment.on_define = async (id, data) => {
 
 Environment.on_change = async (id, data) => {
 	const to_string = d => new Value(d, data.base).toString();
-	const last = document.querySelector(`table[data-assigned="true"]`);
-	if (last) last.setAttribute("data-assigned", "false");
 	const variable = document.querySelector(`table[data-id="${id}"]`);
 	if (!variable) return;
-	variable.setAttribute("data-assigned", "true");
 	switch (data.dimensions) {
 		case 0:
 			variable.querySelector("td").innerHTML =
