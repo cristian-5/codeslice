@@ -83,7 +83,9 @@ Environment.on_define = async (id, data) => {
 		case 1:
 			document.getElementById("debug").innerHTML += `
 			<div class="variable ${data.base}"><table class="array" data-id="${id}">
-				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
+				<tr><th colspan="${data.sizes[0]}">
+					<span class="type">${data.base}</span> <b>${id}</b>[${data.sizes[0]}]</th>
+				</tr>
 				<tr>${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<td title="[${i}]">${data.value[i] === undefined ?
 						'<span class="w-3">?</span>' : data.value[i]}
@@ -94,7 +96,10 @@ Environment.on_define = async (id, data) => {
 		case 2:
 			document.getElementById("debug").innerHTML += `
 			<div class="variable ${data.base}"><table class="array" data-id="${id}">
-				<tr><th colspan="${data.sizes[0]}">${id}</th></tr>
+				<tr><th colspan="${data.sizes[0]}">
+					<span class="type">${data.base}</span>
+					<b>${id}</b>[${data.sizes[0]}][${data.sizes[1]}]</th>
+				</tr>
 				${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<tr>${Array.from({ length: data.sizes[1] }).map((_, j) => `
 						<td title="[${i}][${j}]">${data.value[i][j] === undefined ?
@@ -109,7 +114,7 @@ Environment.on_define = async (id, data) => {
 		case "int": case "float": case "string": case "bool":
 			document.getElementById("debug").innerHTML += `
 			<div class="variable ${data.type}"><table data-id="${id}" data-assigned="false">
-				<tr><th>${id}</th></tr>
+				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
 					'<span class="w-3">?</span>' : data.value
 				}</td></tr>
@@ -119,6 +124,7 @@ Environment.on_define = async (id, data) => {
 };
 
 Environment.on_change = async (id, data) => {
+	const to_string = d => new Value(d, data.base).toString();
 	const last = document.querySelector(`table[data-assigned="true"]`);
 	if (last) last.setAttribute("data-assigned", "false");
 	const variable = document.querySelector(`table[data-id="${id}"]`);
@@ -129,23 +135,25 @@ Environment.on_change = async (id, data) => {
 			variable.querySelector("td").innerHTML =
 				data.value === undefined ?
 				'<span class="w-3">?</span>' :
-				data.value;
+				to_string(data.value);
 		return;
-		case 1:
+		case 1: {
+			const tds = variable.querySelectorAll("td");
 			for (let i = 0; i < data.sizes[0]; i++)
-				variable.querySelectorAll("td")[i].innerHTML =
-					data.value[i] === undefined ?
-					'<span class="w-3">?</span>' :
-					data.value[i];
-		return;
-		case 2:
+				tds[i].innerHTML =
+				data.value[i] === undefined ?
+				'<span class="w-3">?</span>' :
+				to_string(data.value[i]);
+		} return;
+		case 2: {
+			const tds = variable.querySelectorAll("td");
 			for (let i = 0; i < data.sizes[0]; i++)
 				for (let j = 0; j < data.sizes[1]; j++)
-					variable.querySelectorAll("td")[i * data.sizes[1] + j].innerHTML =
-						data.value[i][j] === undefined ?
-						'<span class="w-3">?</span>' :
-						data.value[i][j];
-		return;
+					tds[i * data.sizes[1] + j].innerHTML =
+					data.value[i][j] === undefined ?
+					'<span class="w-3">?</span>' :
+					to_string(data.value[i][j]);
+		} return;
 	}
 };
 

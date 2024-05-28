@@ -209,14 +209,20 @@ header {
 
 .variable th {
 	text-align: left;
-	color: rgba(255, 255, 255, 0.9);
+	color: rgba(255, 255, 255, 0.4);
 	height: 25px;
 	vertical-align: middle;
 	padding-top: 0;
+	font-weight: 500;
 }
 .variable td {
 	text-align: center;
 	user-select: none;
+}
+
+.variable th b {
+	color: rgba(255, 255, 255, 0.9);
+	font-weight: 600;
 }
 
 .array td {
@@ -250,8 +256,8 @@ header {
 .bool { background-color: #b5223d; }
 .int { background-color: rgb(0, 87, 180); }
 .float { background-color: #5900f3; }
-.string { background-color: rgb(208, 99, 15); }
-.char { background-color: rgb(245, 188, 0); }
+.string { background-color: rgb(0, 107, 42); }
+.char { background-color: rgb(178, 116, 20); }
 
 @media (prefers-color-scheme: dark) {
 	.mtk9 { color: #757575 !important; }
