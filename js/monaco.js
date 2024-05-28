@@ -1,3 +1,4 @@
+
 require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.48.0/min/vs" }});
 require([ "vs/editor/editor.main" ], function() {
 	monaco.languages.register({ id: "c+-" });
@@ -34,7 +35,6 @@ require([ "vs/editor/editor.main" ], function() {
 			lineComment: '//'
 		}
 	});
-	// FIX: multiline comments highlighting
 	monaco.languages.setMonarchTokensProvider("c+-", {
 		brackets: [
 			{ token: 'delimiter.curly', open: '{', close: '}' },
@@ -58,6 +58,7 @@ require([ "vs/editor/editor.main" ], function() {
 						'@default': 'identifier'
 					}
 				}],
+				{ include: '@whitespace' },
 				[/\d+\.\d+/, "number.float"],
 				[/\d+/, "number"],
 				[/'[^\\']'/, "string.char"],
@@ -67,11 +68,20 @@ require([ "vs/editor/editor.main" ], function() {
 				[/\,/, "delimiter.comma"],
 				[/;/, "delimiter.semicolon"],
 				[/<<|>>/, "delimiter.angle"],
-				[/\s+/, "white"],
 				[/\/\/.*$/, "comment"],
-				//[/\/\*.*\*\//, "comment"],
 				[/\//, "delimiter"],
-			]
+			],
+			comment: [
+				[/[^\/*]+/, 'comment' ],
+				[/\/\*/,    'comment', '@push' ], // nested comment
+				["\\*/",    'comment', '@pop'  ],
+				[/[\/*]/,   'comment' ]
+			],
+			whitespace: [
+				[/[ \t\r\n]+/, 'white'],
+				[/\/\*/,       'comment', '@comment' ],
+				[/\/\/.*$/,    'comment'],
+			],
 		}
 	});
 
