@@ -265,7 +265,10 @@ class Parser {
 		const f = this.#consume("keyword", "for");
 		this.#consume("operator", "(");
 		let init = null, condition = null, update = null;
-		if (!this.#check("operator", ";")) init = this.#declaration();
+		if (!this.#check("operator", ";")) {
+			if (this.#check("type")) init = this.#declaration();
+			else init = this.#expression();
+		}
 		this.#consume("operator", ";");
 		if (!this.#check("operator", ";")) condition = this.#expression();
 		this.#consume("operator", ";");
