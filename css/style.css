@@ -35,7 +35,9 @@ nav h1 {
 	font-family: monospace;
 }
 
-nav button {
+nav select { appearance: none; }
+
+nav button, nav select {
 	height: 32px;
 	padding: 6px 12px;
 	margin: 0 1px 0 0;
@@ -45,7 +47,7 @@ nav button {
 	border-radius: 6px;
 	cursor: pointer;
 }
-nav button:hover {
+nav button:hover, nav select:hover {
 	background-color: #E2E2E2;
 }
 nav .cassette button {
@@ -54,7 +56,8 @@ nav .cassette button {
 	clear: none;
 	border-radius: 0;
 }
-nav .hidden-buttons button {
+nav .hidden-buttons button,
+nav .hidden-buttons select {
 	background-color: transparent;
 }
 nav .cassette button:first-child {
@@ -252,11 +255,11 @@ header {
 		background-color: #0F0F0F;
 		color: #fff;
 	}
-	nav button {
+	nav button, nav select {
 		background-color: #222222;
 		color: #fff;
 	}
-	nav button:hover { background-color: #2F2F2F; }
+	nav button:hover, nav select:hover { background-color: #2F2F2F; }
 	header {
 		background-color: #333333;
 	}

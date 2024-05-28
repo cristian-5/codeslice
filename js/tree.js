@@ -55,7 +55,7 @@ class Environment {
 
 	define(token, value) {
 		if (this.values.has(token.lexeme))
-			throw new CodeError(Errors.VRD, token, [ token.lexeme ]);
+			throw new CodeError(Language.main.errors.VRD, token, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
 		if (!this.parent) Environment.on_define(token.lexeme, value);
 	}
@@ -63,14 +63,14 @@ class Environment {
 	assign(token, value) {
 		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
 		else if (this.parent) this.parent.assign(token, value);
-		else throw new CodeError(Errors.UVR, token, [ token.lexeme ]);
+		else throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
 		if (!this.parent) Environment.on_change(token.lexeme, value);
 	}
 
 	get(token) {
 		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
 		if (this.parent) return this.parent.get(token);
-		throw new CodeError(Errors.UVR, token, [ token.lexeme ]);
+		throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
 	}
 
 }
@@ -112,7 +112,7 @@ class Assignment extends Expression {
 		const value = right.clone();
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
-			throw new CodeError(Errors.CST, [ this.start, this.end ], [
+			throw new CodeError(Language.main.errors.CST, [ this.start, this.end ], [
 				id.type, value.type
 			]);
 		Environment.current.assign(this.left.name, value);
@@ -132,7 +132,7 @@ class Literal extends Expression {
 			case "string": return new Value(this.value.slice(1, -1), "string");
 			case  "float": return new Value(parseFloat(this.value), "float");
 			case    "int": return new Value(parseInt(this.value), "int");
-			default: throw new CodeError(Errors.LIT, [ this.start, this.end ], [ this.value ]);
+			default: throw new CodeError(Language.main.errors.LIT, [ this.start, this.end ], [ this.value ]);
 		}
 	}
 }
@@ -238,18 +238,18 @@ class InfixExpression extends Expression {
 	async execute() {
 		const l = await this.left.execute(), r = await this.right.execute();
 		if (l.value === undefined)
-			throw new CodeError(Errors.INI, [ this.left.start, this.left.end ]);
+			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
 		if (r.value === undefined)
-			throw new CodeError(Errors.INI, [ this.right.start, this.right.end ]);
+			throw new CodeError(Language.main.errors.INI, [ this.right.start, this.right.end ]);
 		if ([ '/', '%' ].includes(this.operator.lexeme) && r.value === 0)
-			throw new CodeError(Errors.DBZ, [ this.right.start, this.right.end ]);
+			throw new CodeError(Language.main.errors.DBZ, [ this.right.start, this.right.end ]);
 		let key = l.type + this.operator.lexeme + r.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](l, r);
 		key = r.type + this.operator.lexeme + l.type;
 		if (key in InfixExpression.#check)
 			return InfixExpression.#check[key](r, l);
-		throw new CodeError(Errors.UOB, this.operator, [
+		throw new CodeError(Language.main.errors.UOB, this.operator, [
 			this.operator.lexeme, l.type, r.type
 		]);
 	}
@@ -279,7 +279,7 @@ class PrefixExpression extends Expression {
 		const r = await this.right.execute();
 		let key = this.operator.lexeme + r.type, value;
 		if (r.value === undefined)
-			throw new CodeError(Errors.INI, [ this.right.start, this.right.end ]);
+			throw new CodeError(Language.main.errors.INI, [ this.right.start, this.right.end ]);
 		if (key in PrefixExpression.#check) {
 			value = PrefixExpression.#check[key](r);
 			if (![ "++", "--" ].includes(this.operator.lexeme)) return value;
@@ -287,7 +287,7 @@ class PrefixExpression extends Expression {
 				Environment.current.assign(this.right.name, value);
 			return value;
 		}
-		throw new CodeError(Errors.UPO, this.operator, [
+		throw new CodeError(Language.main.errors.UPO, this.operator, [
 			this.operator.lexeme, r.type
 		]);
 	}
@@ -310,9 +310,9 @@ class PostfixExpression extends Expression {
 	async execute() {
 		const l = await this.left.execute();
 		if (l.value === undefined)
-			throw new CodeError(Errors.INI, [ this.left.start, this.left.end ]);
+			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
 		if (!this.left instanceof Identifier)
-			throw new CodeError(Errors.IAT, [ this.left.start, this.left.end ]);
+			throw new CodeError(Language.main.errors.IAT, [ this.left.start, this.left.end ]);
 		let value = new Value(l.value, l.type);
 		if (this.operator.lexeme === "++") value.value++;
 		else value.value--;
@@ -371,17 +371,17 @@ class Call extends Expression {
 	async execute() {
 		const name = this.callee.name.lexeme;
 		if (!Call.#functions[name])
-			throw new CodeError(Errors.UFN, this.callee.name, [ name ]);
+			throw new CodeError(Language.main.errors.UFN, this.callee.name, [ name ]);
 		const args = await Promise.all(this.args.map(a => a.execute()));
 		const arg_types = args.map(a => a.type);
 		const func = Call.#functions[name].find(
 			f => f.args.length === this.args.length &&
 			f.args.every((t, i) => t === arg_types[i])
 		);
-		if (!func) throw new CodeError(Errors.FNF, [ this.start, this.end ], [ name ]);
+		if (!func) throw new CodeError(Language.main.errors.FNF, [ this.start, this.end ], [ name ]);
 		for (let i = 0; i < args.length; i++)
 			if (args[i].type !== func.args[i])
-				throw new CodeError(Errors.CST, [ this.args[i].start, this.args[i].end ], [ func.args[i], args[i].type ]);
+				throw new CodeError(Language.main.errors.CST, [ this.args[i].start, this.args[i].end ], [ func.args[i], args[i].type ]);
 		return new Value(func.run(...args.map(a => a.value)), func.ret);
 	}
 }
@@ -394,22 +394,22 @@ class Subscript extends Expression {
 	}
 	async execute(set, start, end) {
 		if (!(this.left instanceof Identifier))
-			throw new CodeError(Errors.SNA, [ this.start, this.end ]);
+			throw new CodeError(Language.main.errors.SNA, [ this.start, this.end ]);
 		let id = Environment.current.get(this.left.name);
-		if (id.dimensions === 0) throw new CodeError(Errors.SNA, [ this.start, this.end ]);
+		if (id.dimensions === 0) throw new CodeError(Language.main.errors.SNA, [ this.start, this.end ]);
 		if (this.indexes.length !== id.dimensions)
-			throw new CodeError(Errors.ISD, [ this.start, this.end ], [ id.dimensions, this.indexes.length ]);
+			throw new CodeError(Language.main.errors.ISD, [ this.start, this.end ], [ id.dimensions, this.indexes.length ]);
 		const indexes = await Promise.all(this.indexes.map(i => i.execute()));
 		for (let i = 0; i < indexes.length; i++)
 			if (indexes[i].type !== "int")
-				throw new CodeError(Errors.IST, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].type ]);
+				throw new CodeError(Language.main.errors.IST, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].type ]);
 			else if (indexes[i].value < 0 || indexes[i].value >= id.sizes[i])
-				throw new CodeError(Errors.IOB, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].value ]);
+				throw new CodeError(Language.main.errors.IOB, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].value ]);
 		if (set) {
 			let cursor = id.value;
 			for (let i = 0; i < indexes.length - 1; i++) cursor = cursor[indexes[i].value];
 			if (set.type !== id.base)
-				throw new CodeError(Errors.CST, [ start, end ], [ id.base, set.type ]);
+				throw new CodeError(Language.main.errors.CST, [ start, end ], [ id.base, set.type ]);
 			cursor[indexes.top().value] = set.value;
 			return this.left.name;
 		}
@@ -443,16 +443,16 @@ class Declaration extends Statement {
 			if (d.exp) { // assignment
 				value = await d.exp.execute();
 				if (value.type !== this.type.lexeme)
-					throw new CodeError(Errors.CST, [ this.start, this.end ], [
+					throw new CodeError(Language.main.errors.CST, [ this.start, this.end ], [
 						this.type.lexeme, value.type
 					]);
 			} else if (d.sizes) { // array
 				const sizes = await Promise.all(d.sizes.map(s => s.execute()));
 				for (let i = 0; i < sizes.length; i++)
 					if (sizes[i].type !== "int")
-						throw new CodeError(Errors.ASI, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].type ]);
+						throw new CodeError(Language.main.errors.ASI, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].type ]);
 					else if (sizes[i].value <= 0)
-						throw new CodeError(Errors.AS0, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].value ]);
+						throw new CodeError(Language.main.errors.AS0, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].value ]);
 				value = new Value(
 					Array.make(sizes.map(s => s.value)),
 					this.type.lexeme + d.sizes.map(s => `[${s.value}]`).join("")
@@ -497,7 +497,7 @@ class If extends Statement {
 	async execute() {
 		const condition = await this.condition.execute();
 		if (condition.type !== "bool" && condition.type !== "int")
-			throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+			throw new CodeError(Language.main.errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
 		if (condition.value) await this.then.execute();
 		else if (this.els) await this.els.execute();
 	}
@@ -515,7 +515,7 @@ class While extends Statement {
 	async execute() {
 		let condition = await this.condition.execute();
 		if (condition.type !== "bool" && condition.type !== "int")
-			throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+			throw new CodeError(Language.main.errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
 		let count = 0;
 		while (condition.clone().value && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
@@ -527,7 +527,7 @@ class While extends Statement {
 			condition = await this.condition.execute();
 		}
 		if (count >= MAX_LOOP_ITERATIONS)
-			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
+			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
 	}
 }
 
@@ -548,10 +548,10 @@ class DoWhile extends Statement {
 			}
 			condition = await this.condition.execute();
 			if (condition.type !== "bool" && condition.type !== "int")
-				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+				throw new CodeError(Language.main.errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
 		} while (condition.clone().value && count++ < MAX_LOOP_ITERATIONS);
 		if (count >= MAX_LOOP_ITERATIONS)
-			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
+			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
 	}
 }
 
@@ -570,7 +570,7 @@ class For extends Statement {
 		if (this.condition) {
 			condition = await this.condition.execute();
 			if (condition.type !== "bool" && condition.type !== "int")
-				throw new CodeError(Errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
+				throw new CodeError(Language.main.errors.BOO, [ this.condition.start, this.condition.end ], [ condition.type ]);
 		}
 		while ((!this.condition || condition.clone().value) && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
@@ -583,7 +583,7 @@ class For extends Statement {
 			if (this.condition) condition = await this.condition.execute();
 		}
 		if (count >= MAX_LOOP_ITERATIONS)
-			throw new CodeError(Errors.MLI, [ this.condition.start, this.condition.end ]);
+			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
 		Environment.close();
 	}
 
@@ -618,7 +618,7 @@ class Cout extends Statement {
 		for (const e of this.expressions) {
 			const data = await e.execute();
 			if (data.value === undefined)
-				throw new CodeError(Errors.INI, [ e.start, e.end ]);
+				throw new CodeError(Language.main.errors.INI, [ e.start, e.end ]);
 			Cout.print(data.toString());
 		}
 	}
@@ -646,23 +646,23 @@ class Cin extends Statement {
 			switch (id.type) {
 				case "int":
 					id.value = parseInt(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "float":
 					id.value = parseFloat(value);
-					if (isNaN(id.value)) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
+					if (isNaN(id.value)) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "char":
 					id.value = value.charCodeAt(0);
-					if (value.length !== 1) throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
+					if (value.length !== 1) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
 				case "string": id.value = value; break;
 				case "bool":
 					if (value === "true" || value == 1) id.value = true;
 					else if (value === "false" || value == 0) id.value = false;
-					else throw new CodeError(Errors.CII, [ e.start, e.end ], [ id.type ]);
+					else throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
 				break;
-				default: throw new CodeError(Errors.CIT, [ e.start, e.end ], [ id.type ]);
+				default: throw new CodeError(Language.main.errors.CIT, [ e.start, e.end ], [ id.type ]);
 			}
 			Environment.current.assign(e.name, id); // just to notify change
 		}

@@ -46,8 +46,8 @@ class Parser {
 			prev.position + prev.lexeme.length,
 			prev.position + prev.lexeme.length + 1
 		];
-		if (l) throw new CodeError(Errors.EXM, position, [ t, l ]);
-		throw new CodeError(Errors.EXT, position, [ t ]);
+		if (l) throw new CodeError(Language.main.errors.EXM, position, [ t, l ]);
+		throw new CodeError(Language.main.errors.EXT, position, [ t ]);
 	}
 
 	// ==== Lexer ==============================================================
@@ -74,7 +74,7 @@ class Parser {
 						i += 2;
 						while (i < code.length && !(code[i - 1] === '*' && code[i] === '/')) i++;
 						if (code[i] !== '/')
-							throw new CodeError(Errors.MTC, [ position, position + 1 ], '/');
+							throw new CodeError(Language.main.errors.MTC, [ position, position + 1 ], '/');
 						i++;
 					} else tokens.push({ lexeme: code[i], type: "operator", position });
 				break;
@@ -82,20 +82,20 @@ class Parser {
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Errors.MTS, [ position, i ]);
+					if (code[i] == '\n') throw new CodeError(Language.main.errors.MTC, [ position, i ], '"');
 					tokens.push({ lexeme: t + '"', type: "string", position });
 				break;
 				case '\'':
 					position = i; i++; t = "";
 					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
 						t += code[i++];
-					if (code[i] === '\n') throw new CodeError(Errors.MTC, [ position, i ], "'");
+					if (code[i] === '\n') throw new CodeError(Language.main.errors.MTC, [ position, i ], "'");
 					if (t.length !== 1) {
 						if (t.includes('\\')) {
 							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new CodeError(Errors.UES, [ position, i ]);
+							if (!(c in escapedChars)) throw new CodeError(Language.main.errors.UES, [ position, i ]);
 							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new CodeError(Errors.ICL, [ position, i ]);
+						} else throw new CodeError(Language.main.errors.ICL, [ position, i ]);
 					} else tokens.push({ lexeme: `'${t}'`, type: "char", position });
 				break;
 				default:
@@ -111,7 +111,7 @@ class Parser {
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
-					} else throw new CodeError(Errors.UNC, [ position, position + 1 ]);
+					} else throw new CodeError(Language.main.errors.UNC, [ position, position + 1 ]);
 					i--;
 				break;
 			}
@@ -279,7 +279,7 @@ class Parser {
 	#cout() {
 		const c = this.#consume("keyword", "cout");
 		if (!this.#check("operator", "<<"))
-			throw new CodeError(Errors.COU, this.#peek() || this.#previous());
+			throw new CodeError(Language.main.errors.COU, this.#peek() || this.#previous());
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
 		this.#consume("operator", ";");
@@ -289,12 +289,12 @@ class Parser {
 	#cin() {
 		const c = this.#consume("keyword", "cin");
 		if (!this.#check("operator", ">>"))
-			throw new CodeError(Errors.CIN, this.#peek() || this.#previous());
+			throw new CodeError(Language.main.errors.CIN, this.#peek() || this.#previous());
 		let e = [];
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();
 			if (!(id instanceof Identifier))
-				throw new CodeError(Errors.CIX, [ id.start, id.end ]);
+				throw new CodeError(Language.main.errors.CIX, [ id.start, id.end ]);
 			e.push(id);
 		}
 		this.#consume("operator", ";");
@@ -313,7 +313,7 @@ class Parser {
 			const value = this.#assignment();
 			if (e instanceof Identifier || e instanceof Subscript)
 				return new Assignment(e, op, value);
-			throw new CodeError(Errors.IAT, [ e.start, e.end ]);
+			throw new CodeError(Language.main.errors.IAT, [ e.start, e.end ]);
 		} else return e;
 	}
 	// <logic_or> := <logic_and> ( "||" <logic_and> )*
@@ -414,7 +414,7 @@ class Parser {
 			return new Literal(this.#advance(), "string");
 		else if (this.#check("char"))
 			return new Literal(this.#advance(), "char");
-		throw new CodeError(Errors.UEX, this.#peek() || this.#previous());
+		throw new CodeError(Language.main.errors.UEX, this.#peek() || this.#previous());
 	}
 
 	// ==== Interpreter ========================================================

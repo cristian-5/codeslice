@@ -9,6 +9,7 @@
 
 	<link rel="stylesheet" href="css/fontawesome.min.css">
 	<link rel="stylesheet" href="css/solid.min.css">
+	<link rel="stylesheet" href="css/vanilla-toast.css">
 
 	<link rel="stylesheet" href="css/xterm.css">
 
@@ -24,6 +25,8 @@
 		};
 	</script>
 
+	<script type="text/javascript" src="js/language.js"></script>
+	<script type="text/javascript" src="js/vanilla-toast.js"></script>
 	<script type="text/javascript" src="js/xterm.js"></script>
 	<script type="text/javascript" src="js/errors.js"></script>
 	<script type="text/javascript" src="js/tree.js"></script>
@@ -41,8 +44,17 @@
 			<button onclick="settings()" disabled><i class="fa-solid fa-folder-open gray"></i></button>
 		</div>
 		<div class="hidden-buttons">
-			<button onclick="alert('I hope you like my app.\n- Prof. Cristian Antonuccio')">Made with <i class="fa-solid fa-heart red"></i></button>
-			<button onclick=""><i class="fa-solid fa-circle-half-stroke gray"></i></button>
+			<select id="lang" onChange="Language.current = this.options[this.selectedIndex].value;">
+				<option value="EN" selected>🇺🇸 English</option>
+				<option value="IT">🇮🇹 Italian</option>
+			</select>
+			<script type="text/javascript">
+				{
+					const lang = document.getElementById("lang");
+					Language.current = lang.options[lang.selectedIndex].value;
+				}
+			</script>
+			<button onclick="madeWithLove()"><i class="fa-solid fa-heart red"></i></button>
 		</div>
 	</nav>
 

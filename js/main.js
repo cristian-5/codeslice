@@ -15,6 +15,13 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e =
 	terminal.options.theme = structuredClone(e.matches ? theme.dark : theme.light);
 });
 
+document.addEventListener("keydown", e => {
+	if (e.key === 's' && (navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey)) {
+		e.preventDefault();
+		vanillaToast.show(Language.main.saveMessage, { duration: 1000, fadeDuration: 500 });
+	}
+}, false);
+
 let AST = null;
 
 async function compile(show_error = false) {
@@ -46,6 +53,7 @@ async function compile(show_error = false) {
 
 async function run() {
 	await compile(true);
+	if (!AST) return;
 	terminal.reset();
 	document.getElementById("debug").innerHTML = ""; // clear debug view
 	try { await AST.execute(); } catch (e) {
@@ -140,3 +148,7 @@ Environment.on_change = async (id, data) => {
 		return;
 	}
 };
+
+function madeWithLove() {
+	vanillaToast.show(Language.main.loveMessage, { duration: 3000, fadeDuration: 500 });
+}
