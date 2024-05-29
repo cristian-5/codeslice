@@ -53,9 +53,9 @@ async function compile(show_error = false) {
 
 async function run() {
 	await compile(true);
-	if (!AST) return;
 	terminal.reset();
 	document.getElementById("debug").innerHTML = ""; // clear debug view
+	if (!AST) return;
 	try { await AST.execute(); } catch (e) {
 		if (!(e instanceof CodeError)) {
 			console.error(e);
