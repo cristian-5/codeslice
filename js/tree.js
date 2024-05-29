@@ -309,6 +309,7 @@ class PostfixExpression extends Expression {
 	}
 	async execute() {
 		const l = await this.left.execute();
+		const result = l.clone();
 		if (l.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
 		if (!this.left instanceof Identifier)
@@ -317,7 +318,7 @@ class PostfixExpression extends Expression {
 		if (this.operator.lexeme === "++") value.value++;
 		else value.value--;
 		Environment.current.assign(this.left.name, value);
-		return value;
+		return result;
 	}
 }
 
