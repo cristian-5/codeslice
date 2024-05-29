@@ -296,7 +296,7 @@ class Parser {
 		let e = [];
 		while (this.#match("operator", ">>")) {
 			const id = this.#expression();
-			if (!(id instanceof Identifier))
+			if (!(id instanceof Identifier || id instanceof Subscript))
 				throw new CodeError(Language.main.errors.CIX, [ id.start, id.end ]);
 			e.push(id);
 		}

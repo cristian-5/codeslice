@@ -652,16 +652,17 @@ class Cin extends Statement {
 	}
 	async execute() {
 		for (const e of this.expressions) {
-			let value = Cin.input_queue.shift() || await Cin.prompt();
-			const id = Environment.current.get(e.name);
-			if (Cin.input_queue.length === 0 && id.type !== "string") {
+			let value = Cin.input_queue.shift() || await Cin.prompt(), id;
+			if (e instanceof Identifier) id = Environment.current.get(e.name);
+			else id = await e.execute(); // subscript
+			if (Cin.input_queue.length === 0 && id.base !== "string") {
 				const chunks = value.split(/[\s\n\r]+/gm);
 				if (chunks.length > 1) {
 					value = chunks.shift();
 					Cin.input_queue.push(...chunks);
 				} else value = chunks[0];
 			}
-			switch (id.type) {
+			switch (id.base) {
 				case "int":
 					id.value = parseInt(value);
 					if (isNaN(id.value)) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
@@ -682,7 +683,11 @@ class Cin extends Statement {
 				break;
 				default: throw new CodeError(Language.main.errors.CIT, [ e.start, e.end ], [ id.type ]);
 			}
-			Environment.current.assign(e.name, id); // just to notify change
+			if (e instanceof Subscript) {
+				id = await e.execute(id, e.start, e.end);
+				const current = Environment.current.get(id);
+				Environment.current.assign(id, current);
+			} else Environment.current.assign(e.name, id); // just to notify change
 		}
 	}
 }
