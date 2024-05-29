@@ -18,7 +18,6 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - There are no pointers, procedures, functions, classes, exceptions or objects.
 - Arrays have a fixed size but it does not need to be constant.
 - Precedence of compound operators (`+=`, `-=`, `*=`, `/=`, `%=`) is the same.
-- The `++` and `--` operators don't act on arrays or matrix cells.
 
 ## Features
 

@@ -277,13 +277,17 @@ class PrefixExpression extends Expression {
 	}
 	async execute() {
 		const r = await this.right.execute();
-		let key = this.operator.lexeme + r.type, value;
+		const key = this.operator.lexeme + r.base;
 		if (r.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.right.start, this.right.end ]);
 		if (key in PrefixExpression.#check) {
-			value = PrefixExpression.#check[key](r);
+			const value = PrefixExpression.#check[key](r);
 			if (![ "++", "--" ].includes(this.operator.lexeme)) return value;
-			if (this.right instanceof Identifier)
+			if (this.right instanceof Subscript) {
+				const id = await this.right.execute(value, this.start, this.end);
+				const current = Environment.current.get(id);
+				Environment.current.assign(id, current);
+			} else if (this.right instanceof Identifier)
 				Environment.current.assign(this.right.name, value);
 			return value;
 		}
@@ -295,12 +299,12 @@ class PrefixExpression extends Expression {
 
 class PostfixExpression extends Expression {
 	static #check = {
-		"int--":   a => new Value(a.value--, "int"),
-		"int++":   a => new Value(a.value++, "int"),
-		"char--":  a => new Value(a.value--, "int"),
-		"char++":  a => new Value(a.value++, "int"),
-		"float--": a => new Value(a.value--, "float"),
-		"float++": a => new Value(a.value++, "float"),
+		"int--":   a => new Value(a.value - 1, "int"),
+		"int++":   a => new Value(a.value + 1, "int"),
+		"char--":  a => new Value((a.value - 1) & 0xFF, "int"),
+		"char++":  a => new Value((a.value + 1) & 0xFF, "int"),
+		"float--": a => new Value(a.value - 1, "float"),
+		"float++": a => new Value(a.value + 1, "float"),
 	};
 	constructor(left, operator) {
 		super(left.start, operator.end);
@@ -309,14 +313,27 @@ class PostfixExpression extends Expression {
 	}
 	async execute() {
 		const l = await this.left.execute();
+		if (!["int", "char", "float"].includes(l.base))
+			throw new CodeError(Language.main.errors.UPP, this.operator, [
+				this.operator.lexeme, this.left.type
+			]);
 		const result = l.clone();
 		if (l.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
+		const key = l.type + this.operator.lexeme;
+		if (!(key in PostfixExpression.#check))
+			throw new CodeError(Language.main.errors.UPP, this.operator, [
+				this.operator.lexeme, l.type
+			]);
+		const value = PostfixExpression.#check[key](l);
+		if (this.left instanceof Subscript) {
+			const id = await this.left.execute(value, this.start, this.end);
+			const current = Environment.current.get(id);
+			Environment.current.assign(id, current);
+			return result;
+		}
 		if (!this.left instanceof Identifier)
 			throw new CodeError(Language.main.errors.IAT, [ this.left.start, this.left.end ]);
-		let value = new Value(l.value, l.type);
-		if (this.operator.lexeme === "++") value.value++;
-		else value.value--;
 		Environment.current.assign(this.left.name, value);
 		return result;
 	}

@@ -367,10 +367,10 @@ class Parser {
 			return new PrefixExpression(this.#previous(), this.#prefix());
 		return this.#call();
 	}
-	// <call> := <subscript> ( '(' <arguments>? ')' )*
+	// <call> := <postfix> ( '(' <arguments>? ')' )*
 	// <arguments> := <expression> ( ',' <expression> )*
 	#call() {
-		let e = this.#subscript();
+		let e = this.#postfix();
 		while (this.#match("operator", "(")) {
 			const lpar = this.#previous(), args = [];
 			if (!this.#check("operator", ")")) {
@@ -381,9 +381,16 @@ class Parser {
 		}
 		return e;
 	}
-	// <subscript> := <postfix> ('[' <expression> ']') [ '=' <expression> ]
+	// <postfix> := <subscript> ( '++' | '--' )*
+	#postfix() {
+		let e = this.#subscript();
+		while (this.#match("operator", [ "++", "--" ]))
+			e = new PostfixExpression(e, this.#previous());
+		return e;
+	}
+	// <subscript> := <primary> ('[' <expression> ']') [ '=' <expression> ]
 	#subscript() {
-		let e = this.#postfix();
+		let e = this.#primary();
 		if (this.#check("operator", "[")) {
 			const indexes = [];
 			while (this.#match("operator", "[")) {
@@ -392,12 +399,6 @@ class Parser {
 			}
 			e = new Subscript(e, indexes, this.#previous());
 		}
-		return e;
-	}
-	#postfix() {
-		let e = this.#primary();
-		while (this.#match("operator", [ "++", "--" ]))
-			e = new PostfixExpression(e, this.#previous());
 		return e;
 	}
 	// <primary> := '(' <expression> ')' | <postfix> | <number> | <string> | <char> | <bool>
