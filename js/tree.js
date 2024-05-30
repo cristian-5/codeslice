@@ -25,6 +25,7 @@ class Value {
 		return sizes;
 	}
 	get base() { return this.type.replace(/\[.*\]/, ""); }
+	get isArray() { return Array.isArray(this.value); }
 	toString() {
 		if (this.type === "char") return String.fromCharCode(this.value);
 		return this.value.toString();
@@ -653,8 +654,11 @@ class Cin extends Statement {
 	async execute() {
 		for (const e of this.expressions) {
 			let value = Cin.input_queue.shift() || await Cin.prompt(), id;
-			if (e instanceof Identifier) id = Environment.current.get(e.name);
-			else id = await e.execute(); // subscript
+			if (e instanceof Identifier) {
+				id = Environment.current.get(e.name);
+				if (id.isArray)
+					throw new CodeError(Language.main.errors.CIX, [ e.start, e.end ]);
+			} else id = await e.execute(); // subscript
 			if (Cin.input_queue.length === 0 && id.base !== "string") {
 				const chunks = value.split(/[\s\n\r]+/gm);
 				if (chunks.length > 1) {
