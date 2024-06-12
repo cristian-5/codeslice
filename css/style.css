@@ -216,6 +216,7 @@ header {
 	font-weight: 500;
 }
 .variable td {
+	color: #fff;
 	text-align: center;
 	user-select: none;
 }
