@@ -37,6 +37,6 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `break`, `continue` Statements
 - [x] `for` Cycles
 - [x] `++`, `--` Operators
+- [x] Direct `cin` of Array Elements
 - [ ] Automatic Type Casting
-- [ ] Direct `cin` of Array Elements
 - [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators
