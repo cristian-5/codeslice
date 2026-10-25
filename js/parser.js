@@ -354,7 +354,7 @@ class Parser {
 					sizes.push(this.#expression());
 					this.#consume("operator", ']');
 				}
-				return { id, exp: null, sizes };
+				return { id, exp: null, sizes, end: this.#previous().position + 1 }; // after the last ']'
 			} else return { id, exp: null };
 		}
 		const decls = [ partial.call(this) ];
@@ -392,6 +392,9 @@ class Parser {
 		else if (this.#check("keyword", "while")) e = this.#while();
 		else if (this.#check("keyword", "do"))    e = this.#dowhile();
 		else if (this.#check("keyword", "for"))   e = this.#for();
+		else if (this.#check("keyword", "switch")) e = this.#switch();
+		else if (this.#check("keyword", [ "case", "default" ]))
+			throw new CodeError(Language.main.errors.CSO, this.#peek());
 		else if (this.#match("keyword", "break")) {
 			e = new Break(this.#previous());
 			this.#consume("operator", ";");
@@ -454,6 +457,31 @@ class Parser {
 		this.#consume("operator", ")");
 		const block = this.#block();
 		return new For(f, init, condition, update, block);
+	}
+
+	// <switch> := "switch" '(' <expression> ')' '{' { <label> | <statement> } '}'
+	// <label> := "case" <expression> ':' | "default" ':'
+	// The body is kept flat: the labels are just markers between the statements.
+	#switch() {
+		const kw = this.#consume("keyword", "switch");
+		this.#consume("operator", "(");
+		const expression = this.#expression();
+		this.#consume("operator", ")");
+		this.#consume("operator", "{");
+		const body = [];
+		let hasDefault = false;
+		while (!this.#check("operator", "}") && !this.#end()) {
+			if (this.#match("keyword", "case")) {
+				const c = this.#previous(), exp = this.#expression();
+				body.push(new CaseLabel(c, exp, this.#consume("operator", ":")));
+			} else if (this.#match("keyword", "default")) {
+				const d = this.#previous();
+				if (hasDefault) throw new CodeError(Language.main.errors.MDF, d);
+				hasDefault = true;
+				body.push(new DefaultLabel(d, this.#consume("operator", ":")));
+			} else body.push(this.#statement());
+		}
+		return new Switch(kw, expression, body, this.#consume("operator", "}"));
 	}
 
 	// <cout> := "cout" << <expression> ( << <expression> )*

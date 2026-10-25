@@ -36,14 +36,11 @@ function isConstantExpression(e) {
 	return false;
 }
 
-/// Array sizes can only be an int literal or a constant: int a[5]; int b[N];
+/// Array sizes must be constant expressions: int a[5]; int b[N]; int c[N * 2 + 1];
+/// (the type of the result is checked later, see ASI)
 function assertArraySize(e) {
-	if (e instanceof Literal) return; // its type is checked later (ASI)
-	if (e instanceof Identifier) {
-		const v = Environment.current.get(e.name);
-		if (v instanceof Value && v.isConst && v.constant) return;
-	}
-	throw new CodeError(Language.main.errors.ASC, [ e.start, e.end ]);
+	if (!isConstantExpression(e))
+		throw new CodeError(Language.main.errors.ASC, [ e.start, e.end ]);
 }
 
 // ==== Values =================================================================
@@ -271,22 +268,26 @@ class Expression {
 }
 
 class Assignment extends Expression {
+	static #compound = { "+=": "+", "-=": "-", "*=": "*", "/=": "/", "%=": "%" };
 	constructor(left, operator, right) {
 		super(left.start, right.end);
 		this.left = left;
 		this.operator = operator;
 		this.right = right;
+		// "a += b" is evaluated as "a = a + b" (the left side is only assigned once)
+		const base = Assignment.#compound[operator.lexeme];
+		this.value = base ? new InfixExpression(left, { ...operator, lexeme: base }, right) : right;
 	}
 	async execute() {
 		if (this.left instanceof Subscript) {
-			const right = await this.right.execute();
+			const right = await this.value.execute();
 			const id = await this.left.execute(right.clone(), this.start, this.end);
 			const current = Environment.current.get(id);
 			Environment.current.assign(id, current);
 			return right;
 		}
 		assertMutable(this.left);
-		const right = await this.right.execute();
+		const right = await this.value.execute();
 		const value = right.clone();
 		const id = Environment.current.get(this.left.name);
 		if (id.type !== value.type)
@@ -459,8 +460,11 @@ class PrefixExpression extends Expression {
 		this.right = right;
 	}
 	async execute() {
-		if ([ "++", "--" ].includes(this.operator.lexeme) && this.right instanceof Identifier)
-			assertMutable(this.right);
+		if ([ "++", "--" ].includes(this.operator.lexeme)) {
+			if (!(this.right instanceof Identifier || this.right instanceof Subscript))
+				throw new CodeError(Language.main.errors.IAT, [ this.right.start, this.right.end ]);
+			if (this.right instanceof Identifier) assertMutable(this.right);
+		}
 		const r = await this.right.execute();
 		const key = this.operator.lexeme + r.base;
 		if (r.value === undefined)
@@ -497,11 +501,13 @@ class PostfixExpression extends Expression {
 		this.operator = operator;
 	}
 	async execute() {
+		if (!(this.left instanceof Identifier || this.left instanceof Subscript))
+			throw new CodeError(Language.main.errors.IAT, [ this.left.start, this.left.end ]);
 		if (this.left instanceof Identifier) assertMutable(this.left);
 		const l = await this.left.execute();
 		if (!["int", "char", "float"].includes(l.base))
 			throw new CodeError(Language.main.errors.UPP, this.operator, [
-				this.operator.lexeme, this.left.type
+				this.operator.lexeme, l.type
 			]);
 		const result = l.clone();
 		if (l.value === undefined)
@@ -518,8 +524,6 @@ class PostfixExpression extends Expression {
 			Environment.current.assign(id, current);
 			return result;
 		}
-		if (!this.left instanceof Identifier)
-			throw new CodeError(Language.main.errors.IAT, [ this.left.start, this.left.end ]);
 		Environment.current.assign(this.left.name, value);
 		return result;
 	}
@@ -708,7 +712,7 @@ class Declaration extends Statement {
 	constructor(type, declarations, constToken = null) {
 		const last = declarations.top();
 		super((constToken || type).position, last.exp ? last.exp.end : (
-			last.sizes ? last.sizes.end : last.id.position + last.id.lexeme.length
+			last.sizes ? last.end : last.id.position + last.id.lexeme.length
 		));
 		this.type = type;
 		this.declarations = declarations;
@@ -801,10 +805,9 @@ class While extends Statement {
 		let count = 0;
 		while (condition.clone().value && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
-			catch (e) {
+			catch (e) { // "continue" must still reach the update / condition below
 				if (e instanceof BreakException) break;
-				if (e instanceof ContinueException) continue;
-				else throw e;
+				if (!(e instanceof ContinueException)) throw e;
 			}
 			condition = await this.condition.execute();
 		}
@@ -823,10 +826,9 @@ class DoWhile extends Statement {
 		let condition, count = 0;
 		do {
 			try { await this.block.execute(); }
-			catch (e) {
+			catch (e) { // "continue" must still reach the update / condition below
 				if (e instanceof BreakException) break;
-				if (e instanceof ContinueException) continue;
-				else throw e;
+				if (!(e instanceof ContinueException)) throw e;
 			}
 			condition = await this.condition.execute();
 			if (condition.type !== "bool" && condition.type !== "int")
@@ -860,10 +862,9 @@ class For extends Statement {
 		}
 		while ((!this.condition || condition.clone().value) && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
-			catch (e) {
+			catch (e) { // "continue" must still reach the update / condition below
 				if (e instanceof BreakException) break;
-				if (e instanceof ContinueException) continue;
-				else throw e;
+				if (!(e instanceof ContinueException)) throw e;
 			}
 			if (this.increment) await this.increment.execute();
 			if (this.condition) condition = await this.condition.execute();
@@ -872,6 +873,61 @@ class For extends Statement {
 			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
 	}
 
+}
+
+/// Markers inside the body of a switch, see Switch.
+class CaseLabel extends Statement {
+	constructor(keyword, expression, colon) {
+		super(keyword.position, colon.position + 1);
+		this.expression = expression;
+	}
+	async execute() { } // only a jump target
+}
+class DefaultLabel extends Statement {
+	constructor(keyword, colon) {
+		super(keyword.position, colon.position + 1);
+	}
+	async execute() { }
+}
+
+class Switch extends Statement {
+	// body: statements mixed with CaseLabel / DefaultLabel (flat, like in C++)
+	constructor(keyword, expression, body, rbrace) {
+		super(keyword.position, rbrace.position + 1);
+		this.expression = expression;
+		this.body = body;
+	}
+	async execute() {
+		const errors = Language.main.errors, isInteger = t => t === "int" || t === "char";
+		const value = await this.expression.execute();
+		if (value.value === undefined)
+			throw new CodeError(errors.INI, [ this.expression.start, this.expression.end ]);
+		if (!isInteger(value.type))
+			throw new CodeError(errors.SWT, [ this.expression.start, this.expression.end ], [ value.type ]);
+		// find where to jump, checking all the labels (not only the matching one)
+		const seen = new Set();
+		let start = -1, fallback = -1;
+		for (let i = 0; i < this.body.length; i++) {
+			const s = this.body[i];
+			if (s instanceof DefaultLabel) { fallback = i; continue; }
+			if (!(s instanceof CaseLabel)) continue;
+			const e = s.expression, at = [ e.start, e.end ];
+			if (!isConstantExpression(e)) throw new CodeError(errors.CSC, at);
+			const label = await e.execute();
+			if (!isInteger(label.type)) throw new CodeError(errors.CLT, at, [ label.type ]);
+			if (seen.has(label.value)) throw new CodeError(errors.DCV, at, [ label.toString() ]);
+			seen.add(label.value);
+			if (start < 0 && label.value === value.value) start = i;
+		}
+		if (start < 0) start = fallback;
+		if (start < 0) return;
+		Environment.open(); // the whole body is one scope
+		try {
+			for (let i = start; i < this.body.length; i++) await this.body[i].execute(); // falls through
+		} catch (e) {
+			if (!(e instanceof BreakException)) throw e;
+		} finally { Environment.close(); }
+	}
 }
 
 class BreakException { constructor(statement) { this.statement = statement; } }

@@ -14,7 +14,6 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - Dynamic type checking instead of static.
 - The only available data types are `int`, `float`, `char`, `bool` and `string`.
 - There are no pointers, classes, exceptions or objects.
-- Arrays have a fixed size but it does not need to be constant.
 - Precedence of compound operators (`+=`, `-=`, `*=`, `/=`, `%=`) is the same.
 
 ## Features
@@ -42,7 +41,7 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `using namespace` Statements
 - [x] Namespaces
 - [x] `const` Keyword and Expressions
+- [x] `+=`, `-=`, `*=`, `/=`, `%=` Operators
+- [x] `switch` Statements
 - [ ] Automatic Type Casting
 - [ ] Variable Scoping, step by step debug
-- [ ] `switch` Statements
-- [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators

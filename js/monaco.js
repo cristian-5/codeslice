@@ -53,7 +53,7 @@ require([ "vs/editor/editor.main" ], function() {
 		],
 		keywords: [
 			"true", "false",
-			"namespace", "using"
+			"namespace", "using", "const"
 		],
 		tokenizer: {
 			root: [
