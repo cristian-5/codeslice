@@ -1,19 +1,7 @@
 
 const theme = {
-	light: { background: "#FFFFFF", foreground: "#000000", cursor: "#000000", cursorAccent: "#FFFFFF" },
 	dark: { background: "#000000", foreground: "#FFFFFF", cursor: "#FFFFFF", cursorAccent: "#000000" }
 };
-
-function darkMode() {
-	return window.matchMedia && window.matchMedia(
-		"(prefers-color-scheme: dark)"
-	).matches;
-}
-
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
-	editor.updateOptions({ theme: e.matches ? "vs-dark" : "vs" });
-	terminal.options.theme = structuredClone(e.matches ? theme.dark : theme.light);
-});
 
 document.addEventListener("keydown", e => {
 	if (e.key === 's' && (navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey)) {

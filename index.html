@@ -89,7 +89,7 @@
 		window.terminal = new Terminal({
 			convertEol: true, cursorBlink: true,
 			fontSize: 16, fontFamily: "monospace",
-			theme: darkMode() ? theme.dark : theme.light
+			theme: theme.dark
 		});
         window.terminal.open(document.getElementById("terminal"));
 		window.terminal.input_enabled = false;

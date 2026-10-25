@@ -10,12 +10,10 @@ https://cristian-5.github.io/codeslice/
 
 The language `c+-` is a dialect of `c++` with some minor differences:
 
-- No `#include` or preprocessor directives.
-- Namespaces like `std` are not necessary.
 - Simpler execution / compilation errors.
 - Dynamic type checking instead of static.
 - The only available data types are `int`, `float`, `char`, `bool` and `string`.
-- There are no pointers, procedures, functions, classes, exceptions or objects.
+- There are no pointers, classes, exceptions or objects.
 - Arrays have a fixed size but it does not need to be constant.
 - Precedence of compound operators (`+=`, `-=`, `*=`, `/=`, `%=`) is the same.
 
@@ -38,5 +36,10 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `for` Cycles
 - [x] `++`, `--` Operators
 - [x] Direct `cin` of Array Elements
+- [x] `return` Statements
+- [x] Function Declarations
+- [x] `#include` Statements
+- [x] `using namespace` Statements
+- [x] Namespaces
 - [ ] Automatic Type Casting
 - [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators
