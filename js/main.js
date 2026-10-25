@@ -98,14 +98,34 @@ Environment.on_define = async (id, data) => {
 			</table></div>`;
 		return;
 	}
+	if (data.isConst) return; // don't show constants in debug view
 	switch (data.type) {
-		case "int": case "float": case "string": case "bool":
+		case "int": case "float": case "bool":
 			document.getElementById("debug").innerHTML += `
 			<div class="variable ${data.type}"><table data-id="${id}">
-				<tr><th><span class="type">${data.isConst ? "const " : ""}${data.base}</span> <b>${id}</b></th></tr>
+				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
 					'<span class="w-3">?</span>' : data.value
 				}</td></tr>
+			</table></div>`;
+		break;
+		case "char":
+			document.getElementById("debug").innerHTML += `
+			<div class="variable ${data.type}"><table data-id="${id}">
+				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
+				<tr><td>'${ data.value === undefined ?
+					'<span class="w-3">?</span>' : escaped(String.fromCharCode(data.value))
+				}'</td></tr>
+				<tr><td>${ data.value || "" }</td></tr>
+			</table></div>`;
+		break;
+		case "string":
+			document.getElementById("debug").innerHTML += `
+			<div class="variable ${data.type}"><table data-id="${id}">
+				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
+				<tr><td>"${ data.value === undefined ?
+					'<span class="w-3">?</span>' : escaped(data.value)
+				}"</td></tr>
 			</table></div>`;
 		break;
 	}
@@ -144,4 +164,13 @@ Environment.on_change = async (id, data) => {
 
 function madeWithLove() {
 	vanillaToast.show(Language.main.loveMessage, { duration: 3000, fadeDuration: 500 });
+}
+
+function escaped(s) {
+	return s.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\n/g, "\\n")
+		.replace(/\r/g, "\\r")
+		.replace(/\t/g, "\\t");
 }

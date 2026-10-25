@@ -4,9 +4,10 @@ const letter = c =>(c >= 'a' && c <= 'z') ||
 	(c >= 'A' && c <= 'Z') || c === '_';
 const alpha = c => digit(c) || letter(c);
 
+// maps the character AFTER the backslash to the character it stands for
 const escapedChars = {
-	'\\\\': "\\", '\\\'': '\'', '\\"': '"',
-	'\\n': "\n", '\\t': "\t", '\\r': "\r", '\\0': "\0"
+	'\\': "\\", '\'': "'", '"': '"',
+	'n': "\n", 't': "\t", 'r': "\r", '0': "\0"
 };
 
 const types = [ "int", "float", "char", "string", "bool" ];
@@ -54,10 +55,10 @@ class Parser {
 
 	// ==== Lexer ==============================================================
 
-	// FIX: comments
 	#lex() {
 		const code = this.code;
-		let tokens = [], grouped = []; let i = 0, t = "", position = 0;
+		let tokens = [], grouped = []; 
+		let i = 0, t = "", position = 0;
 		while (i < code.length) {
 			switch (code[i]) {
 				case ' ': case '\t': case '\n': break;
@@ -88,36 +89,57 @@ class Parser {
 					if (!headers.includes(m[1])) throw new CodeError(Language.main.errors.UHD, [ position, i ], [ m[1] ]);
 					tokens.push({ lexeme: code.substring(position, i), type: "include", header: m[1], position });
 				} break;
-				case '"':
-					position = i; i++; t = '"';
-					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
-						t += code[i++];
-					if (code[i] == '\n') throw new CodeError(Language.main.errors.MTC, [ position, i ], '"');
-					tokens.push({ lexeme: t + '"', type: "string", position });
-				break;
-				case '\'':
-					position = i; i++; t = "";
-					while (i < code.length && code[i] !== '\'' && code[i] !== '\n')
-						t += code[i++];
-					if (code[i] === '\n') throw new CodeError(Language.main.errors.MTC, [ position, i ], "'");
-					if (t.length !== 1) {
-						if (t.includes('\\')) {
-							const c = t.substring(1, t.length - 1);
-							if (!(c in escapedChars)) throw new CodeError(Language.main.errors.UES, [ position, i ]);
-							else tokens.push({ lexeme: `'${escapedChars[c]}'`, type: "char", position });
-						} else throw new CodeError(Language.main.errors.ICL, [ position, i ]);
-					} else tokens.push({ lexeme: `'${t}'`, type: "char", position });
-				break;
+				case '"': {
+					position = i;
+					i++;
+					t = ""; // decoded content
+					while (i < code.length && code[i] !== '"' && code[i] !== '\n') {
+						if (code[i] === '\\') {
+							const c = code[i + 1];
+							if (c === undefined || c === '\n') break; // unterminated
+							if (!Object.hasOwn(escapedChars, c))
+								throw new CodeError(Language.main.errors.UES, [ i, i + 2 ]);
+							t += escapedChars[c];
+							i += 2;
+						} else t += code[i++];
+					}
+					if (code[i] !== '"') throw new CodeError(Language.main.errors.MTC, [ position, i ], '"');
+					// i stays on the closing quote; the loop's final i++ moves past it
+					// lexeme stays the raw source text (positions/lengths), value is the decoded string
+					tokens.push({ lexeme: code.substring(position, i + 1), value: t, type: "string", position });
+				} break;
+				case '\'': {
+					position = i;
+					i++;
+					t = ""; // decoded content
+					while (i < code.length && code[i] !== '\'' && code[i] !== '\n') {
+						if (code[i] === '\\') {
+							const c = code[i + 1];
+							if (c === undefined || c === '\n') break; // unterminated
+							if (!Object.hasOwn(escapedChars, c))
+								throw new CodeError(Language.main.errors.UES, [ i, i + 2 ]);
+							t += escapedChars[c];
+							i += 2;
+						} else t += code[i++];
+					}
+					if (code[i] !== '\'') throw new CodeError(Language.main.errors.MTC, [ position, i ], "'");
+					if (t.length !== 1) throw new CodeError(Language.main.errors.ICL, [ position, i + 1 ]);
+					// i stays on the closing quote; the loop's final i++ moves past it
+					tokens.push({ lexeme: code.substring(position, i + 1), value: t, type: "char", position });
+				} break;
 				default:
 					position = i;
 					if (digit(code[i])) {
 						t = "";
-						while (i < code.length && digit(code[i]) || code[i] === '.')
+						let hasDecimal = false;
+						while (i < code.length && (digit(code[i]) || (code[i] === '.' && !hasDecimal))) {
+							if (code[i] === '.') hasDecimal = true;
 							t += code[i++];
+						}
 						tokens.push({ lexeme: t, type: "number", position });
 					} else if (letter(code[i])) {
 						t = "";
-						while (i < code.length && alpha(code[i])) t += code[i++];
+						while (i < code.length && letter(code[i])) t += code[i++];
 						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
@@ -128,11 +150,12 @@ class Parser {
 			i++;
 		}
 		// group tokens like !=, ==, <=, >=, etc:
-		for (let i = 0; i < tokens.length - 1; i++) {
-			if (tokens[i].type !== "operator") {
+		for (let i = 0; i < tokens.length; i++) {
+			if (tokens[i].type !== "operator" || i === tokens.length - 1) {
 				grouped.push(tokens[i]);
 				continue;
 			}
+			let combined = false;
 			switch (tokens[i].lexeme) {
 				case '=': case '!': case '*': case '/': case '%':
 					if (tokens[i + 1].lexeme === '=') {
@@ -141,7 +164,8 @@ class Parser {
 							type: "operator", position: tokens[i].position
 						});
 						i++;
-					} else grouped.push(tokens[i]);
+						combined = true;
+					}
 				break;
 				case ':':
 					if (tokens[i + 1].lexeme === ':') {
@@ -150,7 +174,8 @@ class Parser {
 							type: "operator", position: tokens[i].position
 						});
 						i++;
-					} else grouped.push(tokens[i]);
+						combined = true;
+					}
 				break;
 				case '&': case '|': case '<': case '>': case '+': case '-':
 					if (tokens[i + 1].lexeme === '=' || tokens[i + 1].lexeme === tokens[i].lexeme) {
@@ -159,12 +184,12 @@ class Parser {
 							type: "operator", position: tokens[i].position
 						});
 						i++;
-					} else grouped.push(tokens[i]);
+						combined = true;
+					}
 				break;
-				default: grouped.push(tokens[i]);
 			}
+			if (!combined) grouped.push(tokens[i]);
 		}
-		if (tokens.length > 0) grouped.push(tokens[tokens.length - 1]);
 		return grouped;
 	}
 

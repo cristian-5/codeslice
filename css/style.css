@@ -20,12 +20,12 @@ body {
 	height: 100%;
 	width: 100%;
 	overflow: hidden;
-	background-color: rgb(240, 240, 240);
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
 				 Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
-
 	display: flex;
 	flex-direction: column;
+	background-color: #0F0F0F;
+	color: #fff;
 }
 
 nav {
@@ -36,6 +36,8 @@ nav {
 	height: 40px;
 	min-height: 40px;
 	flex: 0 0 40px;
+	margin-bottom: 5px;
+	user-select: none;
 }
 
 nav h1 {
@@ -93,8 +95,19 @@ nav .cassette button:last-child {
 	border-bottom-left-radius: 0;
 }
 
+nav button,
+nav select {
+	background-color: #222222;
+	color: #fff;
+}
+
+nav button:hover,
+nav select:hover {
+	background-color: #2F2F2F;
+}
+
 header {
-	background-color: #FAFAFA;
+	background-color: #333333;
 	height: 36px;
 	min-height: 36px;
 	padding: 6px 12px;
@@ -251,7 +264,6 @@ header {
 .variable td {
 	color: #fff;
 	text-align: center;
-	user-select: none;
 }
 
 .variable th b {
@@ -261,10 +273,9 @@ header {
 
 .array td {
 	color: #fff;
-	height: 40px;
-	width: 40px;
+	height: 50px;
+	width: 50px;
 	border: 1px solid rgba(255, 255, 255, 0.2);
-	user-select: none;
 }
 
 .w-1 { color: rgba(255, 255, 255, 0.1); }
@@ -298,24 +309,8 @@ header {
 	color: #757575 !important;
 }
 
-body {
-	background-color: #0F0F0F;
-	color: #fff;
-}
-
-nav button,
-nav select {
-	background-color: #222222;
-	color: #fff;
-}
-
-nav button:hover,
-nav select:hover {
-	background-color: #2F2F2F;
-}
-
-header {
-	background-color: #333333;
+.margin-view-overlays {
+	user-select: none !important;
 }
 
 #splitgrid > section {

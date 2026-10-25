@@ -303,12 +303,13 @@ class Literal extends Expression {
 	constructor(token, type) {
 		super(token.position, token.position + token.lexeme.length);
 		this.value = token.lexeme;
+		this.decoded = token.value; // escape-decoded content (char/string tokens only)
 		this.type = type;
 	}
 	async execute() {
 		switch (this.type) {
-			case   "char": return new Value(this.value.charCodeAt(1), "char");
-			case "string": return new Value(this.value.slice(1, -1), "string");
+			case   "char": return new Value(this.decoded.charCodeAt(0), "char");
+			case "string": return new Value(this.decoded, "string");
 			case  "float": return new Value(parseFloat(this.value), "float");
 			case    "int": return new Value(parseInt(this.value), "int");
 			default: throw new CodeError(Language.main.errors.LIT, [ this.start, this.end ], [ this.value ]);
