@@ -17,7 +17,7 @@ const keywords = [
 	"switch", "case", "default",
 	"while", "for", "do",
 	"break", "continue",
-	"return", "void", "namespace", "using",
+	"return", "void", "namespace", "using", "const",
 ];
 
 class Parser {
@@ -236,7 +236,7 @@ class Parser {
 		if (this.#check("keyword", "using")) return this.#using();
 		if (this.#check("keyword", "namespace")) return this.#namespace();
 		if (this.#isFunction()) return this.#function();
-		if (this.#check("type")) {
+		if (this.#check("type") || this.#check("keyword", "const")) {
 			const d = this.#declaration();
 			this.#consume("operator", ";");
 			return d;
@@ -337,14 +337,17 @@ class Parser {
 		while (this.#match("operator", "::")) parts.push(this.#consume("identifier"));
 		return new Identifier(this.#qualify(parts));
 	}
-	// <declaration> := <type> <partial> { ',' <partial> }
+	// <declaration> := [ "const" ] <type> <partial> { ',' <partial> }
 	// <partial> := <identifier> [ { '[' <expression> ']' } | '=' <expression> ]
+	// (every <partial> of a const declaration must have an initializer)
 	#declaration() {
+		const kw = this.#match("keyword", "const") ? this.#previous() : null;
 		const type = this.#consume("type");
 		function partial() {
 			const id = this.#consume("identifier");
 			if (this.#match("operator", '='))
 				return { id, exp: this.#expression() };
+			else if (kw) throw new CodeError(Language.main.errors.CNI, id, [ id.lexeme ]);
 			else if (this.#check("operator", '[')) {
 				const sizes = [];
 				while (this.#match("operator", '[')) {
@@ -356,7 +359,7 @@ class Parser {
 		}
 		const decls = [ partial.call(this) ];
 		while (this.#match("operator", ",")) decls.push(partial.call(this));
-		return new Declaration(type, decls);
+		return new Declaration(type, decls, kw);
 	}
 	// <block> := '{' { <statement> } '}'
 	#block() {
@@ -375,7 +378,7 @@ class Parser {
 	//              | <expression> ';'
 	#statement() {
 		let e;
-		if (this.#check("type")) {
+		if (this.#check("type") || this.#check("keyword", "const")) {
 			e = this.#declaration();
 			this.#consume("operator", ";");
 		}
@@ -441,7 +444,7 @@ class Parser {
 		this.#consume("operator", "(");
 		let init = null, condition = null, update = null;
 		if (!this.#check("operator", ";")) {
-			if (this.#check("type")) init = this.#declaration();
+			if (this.#check("type") || this.#check("keyword", "const")) init = this.#declaration();
 			else init = this.#expression();
 		}
 		this.#consume("operator", ";");

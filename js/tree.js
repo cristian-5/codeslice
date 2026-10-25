@@ -12,9 +12,45 @@ async function evalAll(expressions) {
 	return values;
 }
 
+// ==== Const helpers ==========================================================
+
+/// Throws if the identifier refers to a const variable (assignment, ++, --, cin).
+function assertMutable(identifier) {
+	const v = Environment.current.get(identifier.name);
+	if (v instanceof Value && v.isConst)
+		throw new CodeError(Language.main.errors.CAS,
+			[ identifier.start, identifier.end ], [ identifier.name.lexeme ]);
+}
+
+/// Is the expression made only of literals and constants?
+function isConstantExpression(e) {
+	if (e instanceof Literal) return true;
+	if (e instanceof Identifier) {
+		const v = Environment.current.get(e.name);
+		return v instanceof Value && v.isConst && v.constant;
+	}
+	if (e instanceof InfixExpression)
+		return isConstantExpression(e.left) && isConstantExpression(e.right);
+	if (e instanceof PrefixExpression)
+		return ![ "++", "--" ].includes(e.operator.lexeme) && isConstantExpression(e.right);
+	return false;
+}
+
+/// Array sizes can only be an int literal or a constant: int a[5]; int b[N];
+function assertArraySize(e) {
+	if (e instanceof Literal) return; // its type is checked later (ASI)
+	if (e instanceof Identifier) {
+		const v = Environment.current.get(e.name);
+		if (v instanceof Value && v.isConst && v.constant) return;
+	}
+	throw new CodeError(Language.main.errors.ASC, [ e.start, e.end ]);
+}
+
 // ==== Values =================================================================
 
 class Value {
+	isConst = false;  // declared with "const" (clone() never copies this)
+	constant = false; // const AND initialized with a constant expression (usable as array size)
 	constructor(value, type = "int") {
 		this.value = value;
 		this.type = type;
@@ -249,6 +285,7 @@ class Assignment extends Expression {
 			Environment.current.assign(id, current);
 			return right;
 		}
+		assertMutable(this.left);
 		const right = await this.right.execute();
 		const value = right.clone();
 		const id = Environment.current.get(this.left.name);
@@ -422,6 +459,8 @@ class PrefixExpression extends Expression {
 		this.right = right;
 	}
 	async execute() {
+		if ([ "++", "--" ].includes(this.operator.lexeme) && this.right instanceof Identifier)
+			assertMutable(this.right);
 		const r = await this.right.execute();
 		const key = this.operator.lexeme + r.base;
 		if (r.value === undefined)
@@ -458,6 +497,7 @@ class PostfixExpression extends Expression {
 		this.operator = operator;
 	}
 	async execute() {
+		if (this.left instanceof Identifier) assertMutable(this.left);
 		const l = await this.left.execute();
 		if (!["int", "char", "float"].includes(l.base))
 			throw new CodeError(Language.main.errors.UPP, this.operator, [
@@ -664,24 +704,31 @@ class Statement {
 
 class Declaration extends Statement {
 	isDeclaration = true;
-	constructor(type, declarations) {
+	// constToken: the "const" keyword token, or null
+	constructor(type, declarations, constToken = null) {
 		const last = declarations.top();
-		super(type.position, last.exp ? last.exp.end : (
+		super((constToken || type).position, last.exp ? last.exp.end : (
 			last.sizes ? last.sizes.end : last.id.position + last.id.lexeme.length
 		));
 		this.type = type;
 		this.declarations = declarations;
+		this.isConst = !!constToken;
 	}
 	async execute() {
 		for (const d of this.declarations) {
 			let value;
 			if (d.exp) { // assignment
-				value = await d.exp.execute();
+				value = (await d.exp.execute()).clone(); // own copy, never share another variable's Value
 				if (value.type !== this.type.lexeme)
 					throw new CodeError(Language.main.errors.CST, [ this.start, this.end ], [
 						this.type.lexeme, value.type
 					]);
+				if (this.isConst) {
+					value.isConst = true;
+					value.constant = isConstantExpression(d.exp);
+				}
 			} else if (d.sizes) { // array
+				d.sizes.forEach(assertArraySize);
 				const sizes = await evalAll(d.sizes);
 				for (let i = 0; i < sizes.length; i++)
 					if (sizes[i].type !== "int")
@@ -876,6 +923,7 @@ class Cin extends Statement {
 	async execute() {
 		if (!this.qualified) Environment.current.require(this.c);
 		for (const e of this.expressions) {
+			if (e instanceof Identifier) assertMutable(e); // before asking for input
 			let value = Cin.input_queue.shift() || await Cin.prompt(), id;
 			if (e instanceof Identifier) {
 				id = Environment.current.get(e.name);

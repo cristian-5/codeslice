@@ -41,5 +41,8 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `#include` Statements
 - [x] `using namespace` Statements
 - [x] Namespaces
+- [x] `const` Keyword and Expressions
 - [ ] Automatic Type Casting
+- [ ] Variable Scoping, step by step debug
+- [ ] `switch` Statements
 - [ ] `+=`, `-=`, `*=`, `/=`, `%=` Operators

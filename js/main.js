@@ -102,7 +102,7 @@ Environment.on_define = async (id, data) => {
 		case "int": case "float": case "string": case "bool":
 			document.getElementById("debug").innerHTML += `
 			<div class="variable ${data.type}"><table data-id="${id}">
-				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
+				<tr><th><span class="type">${data.isConst ? "const " : ""}${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
 					'<span class="w-3">?</span>' : data.value
 				}</td></tr>

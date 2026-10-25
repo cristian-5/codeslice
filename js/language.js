@@ -55,6 +55,9 @@ class Language {
 				UHD: "Unknown header %",
 				NIO: "'%' requires #include <iostream>",
 				NIS: "'string' requires #include <string>",
+				CNI: "Initializer required for const '%'",
+				CAS: "Cannot modify const '%'",
+				ASC: "Array size must be an int literal or a const"
 			},
 			saveMessage: "🍰 Code SL/CE automatically saves your changes!",
 			loveMessage: "Made with ❤️ by <b>Prof. Cristian Antonuccio</b>",
@@ -112,6 +115,9 @@ class Language {
 				UHD: "Header % sconosciuto",
 				NIO: "'%' richiede #include <iostream>",
 				NIS: "'string' richiede #include <string>",
+				CNI: "Costante const '%' non inizializzata",
+				CAS: "Impossibile modificare costante const '%'",
+				ASC: "La dimensione di un array deve essere costante"
 			},
 			saveMessage: "🍰 Code SL/CE salva automaticamente le modifiche!",
 			loveMessage: "Fatto con ❤️ dal <b>Prof. Cristian Antonuccio</b>",
