@@ -121,7 +121,22 @@ require([ "vs/editor/editor.main" ], function() {
 			{ token: "keyword.control", foreground: "C586C0" },
 			{ token: "identifier", foreground: "9CDCFE" }
 		],
-		colors: { }
+		colors: {
+            // Force all regular bracket/indent lines to a uniform subtle gray
+            "editorBracketPairGuide.background1": "#404040",
+            "editorBracketPairGuide.background2": "#404040",
+            "editorBracketPairGuide.background3": "#404040",
+            "editorBracketPairGuide.background4": "#404040",
+            "editorBracketPairGuide.background5": "#404040",
+            "editorBracketPairGuide.background6": "#404040",
+            // Make the active/selected scope lines brighter (e.g., a lighter gray/white)
+            "editorBracketPairGuide.activeBackground1": "#a0a0a0",
+            "editorBracketPairGuide.activeBackground2": "#a0a0a0",
+            "editorBracketPairGuide.activeBackground3": "#a0a0a0",
+            "editorBracketPairGuide.activeBackground4": "#a0a0a0",
+            "editorBracketPairGuide.activeBackground5": "#a0a0a0",
+            "editorBracketPairGuide.activeBackground6": "#a0a0a0"
+        }
 	});
 
 	window.editor = monaco.editor.create(document.getElementById("monaco"), {
@@ -138,6 +153,13 @@ require([ "vs/editor/editor.main" ], function() {
 		insertSpaces: false,
 		stickyScroll: { enabled: false },
 		selectOnLineNumbers: true,
+		bracketPairColorization: { enabled: false },
+		guides: {
+			indentation: true,
+			bracketPairs: true,
+			bracketPairsHorizontal: false,
+			highlightActiveBracketPair: true
+		},
 		theme: "csl-dark"
 	});
 	editor.last_typing = 0;
