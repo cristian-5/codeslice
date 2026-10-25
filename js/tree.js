@@ -1,9 +1,6 @@
 
 // ==== Settings ===============================================================
 
-/// If true, it requires `using namespace std;` and an entry point `int main()`.
-const STRICT_CPP = false;
-
 /// Recursion limit, protects against infinite recursion.
 const MAX_CALL_DEPTH = 2000;
 
@@ -93,8 +90,6 @@ class Environment {
 		std.values.set("cout", new StreamSymbol());
 		std.values.set("cin",  new StreamSymbol());
 		global.namespaces.set("std", std);
-		// outside of STRICT_CPP, "using namespace std;" is implied
-		if (!STRICT_CPP) global.usings.push(std);
 		Environment.global = Environment.current = global;
 	}
 	static open() { Environment.current = new Environment(Environment.current); }
@@ -148,7 +143,7 @@ class Environment {
 			if (ns.values.has(token.member)) owner = ns;
 		} else owner = this.#owner(token.lexeme);
 		if (owner) return owner;
-		if (STRICT_CPP && !token.qualifiers &&
+		if (!token.qualifiers &&
 			Environment.global.namespaces.get("std").values.has(token.lexeme))
 			throw new CodeError(Language.main.errors.NDS, token, [ token.lexeme, token.lexeme ]);
 		throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
@@ -1010,7 +1005,8 @@ class UsingDeclaration extends Statement {
 		const t = this.token, env = Environment.current;
 		const ns = env.findNamespace(t.qualifiers);
 		if (ns.values.has(t.member)) env.aliases.set(t.member, ns);
-		else if (!(ns === Environment.global.namespaces.get("std") && Call.hasBuiltin(t.member)))
+		else if (!(ns === Environment.global.namespaces.get("std") &&
+			(Call.hasBuiltin(t.member) || t.member === "string"))) // string is a type, see Parser
 			throw new CodeError(Language.main.errors.UVR, t, [ t.lexeme ]);
 	}
 }

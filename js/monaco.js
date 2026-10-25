@@ -42,20 +42,24 @@ require([ "vs/editor/editor.main" ], function() {
 			{ token: 'delimiter.square', open: '[', close: ']' },
 			{ token: 'delimiter.angle', open: '<', close: '>' }
 		],
+		types: [
+			"void", "int", "float", "double", "char", "string", "bool", "void"
+		],
 		keywords: [
-			"int", "float", "char", "string", "bool",
 			"if", "else",
 			"switch", "case", "default",
 			"while", "for", "do",
 			"break", "continue",
 			"true", "false",
-			"void", "return", "namespace", "using"
+			"return", "namespace", "using"
 		],
 		tokenizer: {
 			root: [
+				[/#.*$/, "keyword"],
 				[/[a-zA-Z_]\w*/, {
 					cases: {
 						'@keywords': { token: 'keyword.$0' },
+						'@types': { token: 'type.$0' },
 						'@default': 'identifier'
 					}
 				}],
@@ -88,7 +92,7 @@ require([ "vs/editor/editor.main" ], function() {
 
 	window.editor = monaco.editor.create(document.getElementById("monaco"), {
 		value: localStorage.getItem("code") ||
-			"\nusing namespace std;\n\nint main() {\n\tcout << \"Hello, world!\" << endl;\n\treturn 0;\n}\n",
+			"\n#include <iostream>\nusing namespace std;\n\nint main() {\n\tcout << \"Hello, world!\" << endl;\n\treturn 0;\n}\n",
 		language: "c+-",
 		codeLens: true,
 		cursorStyle: "line",

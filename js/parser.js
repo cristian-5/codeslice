@@ -10,6 +10,7 @@ const escapedChars = {
 };
 
 const types = [ "int", "float", "char", "string", "bool" ];
+const headers = [ "iostream", "string", "cmath", "cstdlib", "ctime" ];
 const keywords = [
 	"cout", "cin",
 	"if", "else",
@@ -23,7 +24,7 @@ class Parser {
 
 	constructor(code) {
 		CodeError.code = this.code = code.replace(/\r/g, ""); // CRLF to LF
-		this.tokens = this.#lex();
+		this.tokens = this.#headers(this.#lex());
 	}
 
 	#advance() { return this.tokens[this.current++]; }
@@ -79,6 +80,14 @@ class Parser {
 						i++;
 					} else tokens.push({ lexeme: code[i], type: "operator", position });
 				break;
+				case '#': {
+					position = i;
+					while (i < code.length && code[i] !== '\n') i++;
+					const m = code.substring(position, i).match(/^#\s*include\s*<\s*([\w.]+)\s*>\s*(\/\/.*)?$/);
+					if (!m) throw new CodeError(Language.main.errors.BIN, [ position, i ]);
+					if (!headers.includes(m[1])) throw new CodeError(Language.main.errors.UHD, [ position, i ], [ m[1] ]);
+					tokens.push({ lexeme: code.substring(position, i), type: "include", header: m[1], position });
+				} break;
 				case '"':
 					position = i; i++; t = '"';
 					while (i < code.length && code[i] !== '"' && code[i] !== '\n')
@@ -159,11 +168,44 @@ class Parser {
 		return grouped;
 	}
 
+	// Checks #include / using against what the code uses, and turns std::string
+	// into a single "string" type token. #include tokens are removed.
+	#headers(tokens) {
+		const errors = Language.main.errors, included = new Set(), out = [];
+		let usingStd = false, usingString = false;
+		for (let i = 0; i < tokens.length; i++) {
+			const t = tokens[i], next = tokens[i + 1], after = tokens[i + 2], last = out[out.length - 1];
+			if (t.type === "include") { included.add(t.header); continue; }
+			if (((t.type === "keyword" && (t.lexeme === "cout" || t.lexeme === "cin")) ||
+				(t.type === "identifier" && t.lexeme === "endl")) && !included.has("iostream"))
+				throw new CodeError(errors.NIO, t, [ t.lexeme ]);
+			if (t.type === "keyword" && t.lexeme === "using" && next && after) {
+				if (next.lexeme === "namespace" && after.lexeme === "std") usingStd = true;
+				if (next.lexeme === "std" && after.lexeme === "::" && tokens[i + 3]?.lexeme === "string")
+					usingString = true;
+			}
+			if (t.type === "identifier" && t.lexeme === "std" && next?.lexeme === "::" &&
+				after?.type === "type" && after.lexeme === "string" &&
+				!(last && last.type === "keyword" && last.lexeme === "using")) { // std::string
+				if (!included.has("string")) throw new CodeError(errors.NIS, after);
+				out.push(after);
+				i += 2;
+				continue;
+			}
+			if (t.type === "type" && t.lexeme === "string") {
+				if (!included.has("string")) throw new CodeError(errors.NIS, t);
+				if (!usingStd && !usingString)
+					throw new CodeError(errors.NDS, t, [ "string", "string" ]);
+			}
+			out.push(t);
+		}
+		return out;
+	}
+
 	// ==== Parser =============================================================
 
 	// <program> := { <top_level> }
-	// With a main() function only declarations are allowed outside of functions.
-	// Without it (and without STRICT_CPP) the program runs as a plain script.
+	// main() is required and only declarations are allowed outside of functions.
 	#program() {
 		const items = [], first = [];
 		while (!this.#end()) {
@@ -179,7 +221,7 @@ class Parser {
 				if (!item.isDeclaration)
 					throw new CodeError(Language.main.errors.OUT, first[i]);
 			});
-		} else if (STRICT_CPP) throw new CodeError(Language.main.errors.NOM, [ 0, 1 ]);
+		} else throw new CodeError(Language.main.errors.NOM, [ 0, 1 ]);
 		return new Program(items, main ? main.name : null);
 	}
 	// <top_level> := <using> | <namespace> | <function> | <block>
@@ -223,8 +265,9 @@ class Parser {
 		const parts = [ this.#consume("identifier") ];
 		do {
 			this.#consume("operator", "::");
-			// cout and cin are keywords for the lexer
-			if (this.#check("keyword", [ "cout", "cin" ])) parts.push(this.#advance());
+			// cout, cin and string are not identifiers for the lexer
+			if (this.#check("keyword", [ "cout", "cin" ]) || this.#check("type", "string"))
+				parts.push(this.#advance());
 			else parts.push(this.#consume("identifier"));
 		} while (this.#check("operator", "::"));
 		return new UsingDeclaration(kw, this.#qualify(parts), this.#consume("operator", ";"));
