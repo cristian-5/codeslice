@@ -121,15 +121,13 @@ require([ "vs/editor/editor.main" ], function() {
 			{ token: "keyword.control", foreground: "C586C0" },
 			{ token: "identifier", foreground: "9CDCFE" }
 		],
-		colors: {
-            // Force all regular bracket/indent lines to a uniform subtle gray
+		colors: { // LEAVE THIS AS IS, IT'S AVOIDING RAINBOW VERTICAL GUIDES
             "editorBracketPairGuide.background1": "#404040",
             "editorBracketPairGuide.background2": "#404040",
             "editorBracketPairGuide.background3": "#404040",
             "editorBracketPairGuide.background4": "#404040",
             "editorBracketPairGuide.background5": "#404040",
             "editorBracketPairGuide.background6": "#404040",
-            // Make the active/selected scope lines brighter (e.g., a lighter gray/white)
             "editorBracketPairGuide.activeBackground1": "#a0a0a0",
             "editorBracketPairGuide.activeBackground2": "#a0a0a0",
             "editorBracketPairGuide.activeBackground3": "#a0a0a0",
