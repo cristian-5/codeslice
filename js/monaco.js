@@ -48,7 +48,8 @@ require([ "vs/editor/editor.main" ], function() {
 			"switch", "case", "default",
 			"while", "for", "do",
 			"break", "continue",
-			"true", "false"
+			"true", "false",
+			"void", "return", "namespace", "using"
 		],
 		tokenizer: {
 			root: [
@@ -63,7 +64,7 @@ require([ "vs/editor/editor.main" ], function() {
 				[/\d+/, "number"],
 				[/'[^\\']'/, "string.char"],
 				[/"[^\\"]*"/, "string"],
-				[/[~!%^&*\+\=\|\-]+/, "delimiter"],
+				[/[~!%^&*\+\=\|\-:]+/, "delimiter"],
 				[/\./, "delimiter.period"],
 				[/\,/, "delimiter.comma"],
 				[/;/, "delimiter.semicolon"],
@@ -86,7 +87,8 @@ require([ "vs/editor/editor.main" ], function() {
 	});
 
 	window.editor = monaco.editor.create(document.getElementById("monaco"), {
-		value: localStorage.getItem("code") || "\ncout << \"Hello, world!\" << endl;\n",
+		value: localStorage.getItem("code") ||
+			"\nusing namespace std;\n\nint main() {\n\tcout << \"Hello, world!\" << endl;\n\treturn 0;\n}\n",
 		language: "c+-",
 		codeLens: true,
 		cursorStyle: "line",

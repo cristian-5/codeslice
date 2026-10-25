@@ -16,6 +16,7 @@ const keywords = [
 	"switch", "case", "default",
 	"while", "for", "do",
 	"break", "continue",
+	"return", "void", "namespace", "using",
 ];
 
 class Parser {
@@ -160,11 +161,138 @@ class Parser {
 
 	// ==== Parser =============================================================
 
-	// <program> := { <block> }
+	// <program> := { <top_level> }
+	// With a main() function only declarations are allowed outside of functions.
+	// Without it (and without STRICT_CPP) the program runs as a plain script.
 	#program() {
-		let e = [];
-		while (!this.#end()) e.push(this.#block());
-		return new Program(e, this.code);
+		const items = [], first = [];
+		while (!this.#end()) {
+			first.push(this.#peek());
+			items.push(this.#topLevel());
+		}
+		const main = items.find(i =>
+			i instanceof FunctionDefinition && i.name.lexeme === "main" && i.body);
+		if (main) {
+			if (main.returnType.lexeme !== "int" || main.params.length > 0)
+				throw new CodeError(Language.main.errors.MAI, main.name);
+			items.forEach((item, i) => {
+				if (!item.isDeclaration)
+					throw new CodeError(Language.main.errors.OUT, first[i]);
+			});
+		} else if (STRICT_CPP) throw new CodeError(Language.main.errors.NOM, [ 0, 1 ]);
+		return new Program(items, main ? main.name : null);
+	}
+	// <top_level> := <using> | <namespace> | <function> | <block>
+	#topLevel() {
+		if (this.#check("keyword", "using")) return this.#using();
+		if (this.#check("keyword", "namespace")) return this.#namespace();
+		if (this.#isFunction()) return this.#function();
+		return this.#block();
+	}
+	// <member> := <using> | <namespace> | <function> | <declaration> ';'
+	#member() {
+		if (this.#check("keyword", "using")) return this.#using();
+		if (this.#check("keyword", "namespace")) return this.#namespace();
+		if (this.#isFunction()) return this.#function();
+		if (this.#check("type")) {
+			const d = this.#declaration();
+			this.#consume("operator", ";");
+			return d;
+		}
+		throw new CodeError(Language.main.errors.OUT, this.#peek() || this.#previous());
+	}
+	// <namespace> := "namespace" <identifier> '{' { <member> } '}'
+	#namespace() {
+		const kw = this.#consume("keyword", "namespace");
+		const name = this.#consume("identifier");
+		this.#consume("operator", "{");
+		const items = [];
+		while (!this.#check("operator", "}") && !this.#end()) items.push(this.#member());
+		const rbrace = this.#consume("operator", "}");
+		return new NamespaceDeclaration(kw, name, items, rbrace);
+	}
+	// <using> := "using" "namespace" <identifier> { "::" <identifier> } ';'
+	//          | "using" <identifier> "::" <identifier> { "::" <identifier> } ';'
+	#using() {
+		const kw = this.#consume("keyword", "using");
+		if (this.#match("keyword", "namespace")) {
+			const path = [ this.#consume("identifier") ];
+			while (this.#match("operator", "::")) path.push(this.#consume("identifier"));
+			return new UsingNamespace(kw, path, this.#consume("operator", ";"));
+		}
+		const parts = [ this.#consume("identifier") ];
+		do {
+			this.#consume("operator", "::");
+			// cout and cin are keywords for the lexer
+			if (this.#check("keyword", [ "cout", "cin" ])) parts.push(this.#advance());
+			else parts.push(this.#consume("identifier"));
+		} while (this.#check("operator", "::"));
+		return new UsingDeclaration(kw, this.#qualify(parts), this.#consume("operator", ";"));
+	}
+	// is there "<type> <identifier> (" ahead?
+	#isFunction() {
+		const a = this.#peek(), b = this.tokens[this.current + 1], c = this.tokens[this.current + 2];
+		return !!(a && b && c) &&
+			(a.type === "type" || (a.type === "keyword" && a.lexeme === "void")) &&
+			b.type === "identifier" && c.type === "operator" && c.lexeme === "(";
+	}
+	// <function> := ( <type> | "void" ) <identifier> '(' [ <params> ] ')' ( <block> | ';' )
+	// <params> := "void" | <type> [ <identifier> ] { ',' <type> [ <identifier> ] }
+	// (a function ending with ';' is a prototype, so the parameter names are optional)
+	#function() {
+		const returnType = this.#advance();
+		const name = this.#consume("identifier");
+		this.#consume("operator", "(");
+		const params = [];
+		if (this.#check("keyword", "void") && this.tokens[this.current + 1]?.lexeme === ")")
+			this.#advance();
+		else if (!this.#check("operator", ")")) {
+			do {
+				const type = this.#consume("type");
+				const id = this.#check("identifier") ? this.#advance() : null;
+				params.push({ type, id });
+			} while (this.#match("operator", ","));
+		}
+		this.#consume("operator", ")");
+		if (this.#match("operator", ";"))
+			return new FunctionDefinition(returnType, name, params, null, this.#previous().position + 1);
+		const missing = params.find(p => !p.id);
+		if (missing) {
+			const end = missing.type.position + missing.type.lexeme.length;
+			throw new CodeError(Language.main.errors.EXT, [ end, end + 1 ], [ "identifier" ]);
+		}
+		if (!this.#check("operator", "{")) this.#consume("operator", "{"); // reports the error
+		const body = this.#block();
+		return new FunctionDefinition(returnType, name, params, body, body.end);
+	}
+	// <return> := "return" [ <expression> ] ';'
+	#return() {
+		const kw = this.#consume("keyword", "return");
+		let exp = null;
+		if (!this.#check("operator", ";")) exp = this.#expression();
+		this.#consume("operator", ";");
+		return new Return(kw, exp);
+	}
+	// is there std::<keyword> ahead? (std::cout, std::cin)
+	#isStd(keyword) {
+		const a = this.#peek(), b = this.tokens[this.current + 1], c = this.tokens[this.current + 2];
+		return !!(a && b && c) && a.type === "identifier" && a.lexeme === "std" &&
+			b.lexeme === "::" && c.type === "keyword" && c.lexeme === keyword;
+	}
+	// a::b::c becomes a single token with "qualifiers" [a, b] and "member" c
+	#qualify(parts) {
+		if (parts.length === 1) return parts[0];
+		return {
+			lexeme: parts.map(p => p.lexeme).join("::"),
+			type: "identifier", position: parts[0].position,
+			qualifiers: parts.slice(0, -1), member: parts[parts.length - 1].lexeme
+		};
+	}
+	// <identifier> := <name> { "::" <name> }
+	#identifier() {
+		const parts = [ this.#advance() ];
+		while (this.#match("operator", "::")) parts.push(this.#consume("identifier"));
+		return new Identifier(this.#qualify(parts));
 	}
 	// <declaration> := <type> <partial> { ',' <partial> }
 	// <partial> := <identifier> [ { '[' <expression> ']' } | '=' <expression> ]
@@ -208,8 +336,12 @@ class Parser {
 			e = this.#declaration();
 			this.#consume("operator", ";");
 		}
-		else if (this.#check("keyword", "cout"))  e = this.#cout();
-		else if (this.#check("keyword", "cin"))   e = this.#cin();
+		else if (this.#check("keyword", "cout"))  e = this.#cout(false);
+		else if (this.#check("keyword", "cin"))   e = this.#cin(false);
+		else if (this.#isStd("cout")) { this.#advance(); this.#advance(); e = this.#cout(true); }
+		else if (this.#isStd("cin"))  { this.#advance(); this.#advance(); e = this.#cin(true); }
+		else if (this.#check("keyword", "return")) e = this.#return();
+		else if (this.#check("keyword", "using"))  e = this.#using();
 		else if (this.#check("keyword", "if"))    e = this.#if();
 		else if (this.#check("keyword", "while")) e = this.#while();
 		else if (this.#check("keyword", "do"))    e = this.#dowhile();
@@ -279,17 +411,17 @@ class Parser {
 	}
 
 	// <cout> := "cout" << <expression> ( << <expression> )*
-	#cout() {
+	#cout(qualified) {
 		const c = this.#consume("keyword", "cout");
 		if (!this.#check("operator", "<<"))
 			throw new CodeError(Language.main.errors.COU, this.#peek() || this.#previous());
 		let e = [];
 		while (this.#match("operator", "<<")) e.push(this.#expression());
 		this.#consume("operator", ";");
-		return new Cout(c, e);
+		return new Cout(c, e, qualified);
 	}
 	// <cin> := "cin" >> <identifier> ( >> <identifier> )*
-	#cin() {
+	#cin(qualified) {
 		const c = this.#consume("keyword", "cin");
 		if (!this.#check("operator", ">>"))
 			throw new CodeError(Language.main.errors.CIN, this.#peek() || this.#previous());
@@ -301,7 +433,7 @@ class Parser {
 			e.push(id);
 		}
 		this.#consume("operator", ";");
-		return new Cin(c, e);
+		return new Cin(c, e, qualified);
 	}
 
 	// ==== Expressions ========================================================
@@ -413,7 +545,7 @@ class Parser {
 			return new Literal(n, "int");
 		}
 		else if (this.#check("identifier"))
-			return new Identifier(this.#advance());
+			return this.#identifier();
 		else if (this.#check("string"))
 			return new Literal(this.#advance(), "string");
 		else if (this.#check("char"))

@@ -1,4 +1,20 @@
 
+// ==== Settings ===============================================================
+
+/// If true, it requires `using namespace std;` and an entry point `int main()`.
+const STRICT_CPP = false;
+
+/// Recursion limit, protects against infinite recursion.
+const MAX_CALL_DEPTH = 2000;
+
+// Evaluates expressions one after the other, never in parallel: function calls
+// swap Environment.current, so overlapping evaluations would corrupt it.
+async function evalAll(expressions) {
+	const values = [];
+	for (const e of expressions) values.push(await e.execute());
+	return values;
+}
+
 // ==== Values =================================================================
 
 class Value {
@@ -33,55 +49,184 @@ class Value {
 	clone() { return new Value(structuredClone(this.value), this.type); }
 }
 
+// ==== Functions & namespaces =================================================
+
+/// Thrown by "return" and caught by the function call that is running.
+class ReturnException {
+	constructor(value, statement) {
+		this.value = value;         // Value, or null for a bare "return;"
+		this.statement = statement; // the Return statement (for error positions)
+	}
+}
+
+/// Streams like cout and cin are represented by this class.
+/// It is not a Value, so it cannot be used as a variable or function argument.
+class StreamSymbol { }
+
+/// Stores all the functions sharing one name (overloads) in one scope.
+class FunctionSet {
+	constructor(name) {
+		this.name = name;
+		this.type = this.base = "function"; // used by error messages
+		this.overloads = [];
+	}
+	find(types) {
+		return this.overloads.find(f =>
+			f.types.length === types.length && f.types.every((t, i) => t === types[i]));
+	}
+}
+
 class Environment {
 
 	static current = undefined;
+	static global = undefined;
 
 	static on_define = (id, data) => {};
 	static on_change = (id, data) => {};
 
 	static create() {
-		Environment.current = new Environment(undefined);
-		Environment.current.values.set("true",  new Value(true, "bool"));
-		Environment.current.values.set("false", new Value(false, "bool"));
-		Environment.current.values.set("endl",  new Value("\n", "string"));
+		const global = new Environment(undefined, "");
+		global.values.set("true",  new Value(true, "bool"));
+		global.values.set("false", new Value(false, "bool"));
+		const std = new Environment(global, "std");
+		std.values.set("endl", new Value("\n", "string"));
+		std.values.set("cout", new StreamSymbol());
+		std.values.set("cin",  new StreamSymbol());
+		global.namespaces.set("std", std);
+		// outside of STRICT_CPP, "using namespace std;" is implied
+		if (!STRICT_CPP) global.usings.push(std);
+		Environment.global = Environment.current = global;
 	}
 	static open() { Environment.current = new Environment(Environment.current); }
 	static close() { Environment.current = Environment.current.parent; }
-	
-	constructor(parent) {
+
+	/// The `name` is only given for namespaces (`""` for global).
+	constructor(parent, name) {
 		this.parent = parent;
-		this.values = new Map();
+		this.values = new Map();     // variables and functions
+		this.namespaces = new Map(); // nested namespaces
+		this.aliases = new Map();    // "using std::x;"  (name -> environment owning it)
+		this.usings = [];            // "using namespace x;"
+		this.isNamespace = name !== undefined;
+		this.prefix = name ? (parent ? parent.prefix : "") + name + "::" : "";
 	}
 
-	define(token, value) {
-		if (this.values.has(token.lexeme))
-			throw new CodeError(Language.main.errors.VRD, token, [ token.lexeme ]);
-		this.values.set(token.lexeme, value);
-		if (!this.parent) Environment.on_define(token.lexeme, value);
+	/// Environment holding the unqualified name:
+	/// this scope, then the names brought in by "using", then the enclosing scopes.
+	#owner(name) {
+		if (this.values.has(name)) return this;
+		if (this.aliases.has(name)) return this.aliases.get(name);
+		for (const u of this.usings) if (u.values.has(name)) return u;
+		return this.parent ? this.parent.#owner(name) : undefined;
 	}
 
-	assign(token, value) {
-		if (this.values.has(token.lexeme)) this.values.set(token.lexeme, value);
-		else if (this.parent) this.parent.assign(token, value);
-		else throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
-		if (!this.parent) Environment.on_change(token.lexeme, value);
+	#findNamespace(name) {
+		if (this.namespaces.has(name)) return this.namespaces.get(name);
+		for (const u of this.usings)
+			if (u.namespaces.has(name)) return u.namespaces.get(name);
+		return this.parent ? this.parent.#findNamespace(name) : undefined;
+	}
+
+	/// Resolves a chain of namespace tokens like `a::b`.
+	findNamespace(tokens) {
+		let ns;
+		for (const t of tokens) {
+			ns = ns ? ns.namespaces.get(t.lexeme) : this.#findNamespace(t.lexeme);
+			if (!ns) throw new CodeError(Language.main.errors.UNS, t, [ t.lexeme ]);
+		}
+		return ns;
+	}
+
+	// Identifiers like `a::b` come from the parser as a single token with
+	// "qualifiers" (the namespace tokens) and "member" (the last name).
+	static key(token) { return token.qualifiers ? token.member : token.lexeme; }
+
+	#resolve(token) {
+		let owner;
+		if (token.qualifiers) {
+			const ns = this.findNamespace(token.qualifiers);
+			if (ns.values.has(token.member)) owner = ns;
+		} else owner = this.#owner(token.lexeme);
+		if (owner) return owner;
+		if (STRICT_CPP && !token.qualifiers &&
+			Environment.global.namespaces.get("std").values.has(token.lexeme))
+			throw new CodeError(Language.main.errors.NDS, token, [ token.lexeme, token.lexeme ]);
+		throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
+	}
+
+	/// Like get() but returns undefined instead of throwing if the name is unknown.
+	lookup(token) {
+		if (token.qualifiers)
+			return this.findNamespace(token.qualifiers).values.get(token.member);
+		const owner = this.#owner(token.lexeme);
+		return owner && owner.values.get(token.lexeme);
+	}
+
+	/// Enforces `cout` / `cin` visibility (`using namespace std;` or `std::`).
+	require(token) {
+		if (this.lookup(token) === undefined)
+			throw new CodeError(Language.main.errors.NDS, token, [ token.lexeme, token.lexeme ]);
 	}
 
 	get(token) {
-		if (this.values.has(token.lexeme)) return this.values.get(token.lexeme);
-		if (this.parent) return this.parent.get(token);
-		throw new CodeError(Language.main.errors.UVR, token, [ token.lexeme ]);
+		return this.#resolve(token).values.get(Environment.key(token));
+	}
+
+	define(token, value) {
+		if (this.values.has(token.lexeme) || this.aliases.has(token.lexeme))
+			throw new CodeError(Language.main.errors.VRD, token, [ token.lexeme ]);
+		this.values.set(token.lexeme, value);
+		// globals and namespace members are shown in the debug view
+		if (this.isNamespace && value instanceof Value)
+			Environment.on_define(this.prefix + token.lexeme, value);
+	}
+
+	// entry: { token, returnType, types, names, body, env } or { types, returnType, native }
+	defineFunction(entry) {
+		const name = entry.token.lexeme;
+		let set = this.values.get(name);
+		if (set === undefined) {
+			set = new FunctionSet(name);
+			this.values.set(name, set);
+		} else if (!(set instanceof FunctionSet))
+			throw new CodeError(Language.main.errors.VRD, entry.token, [ name ]);
+		const existing = set.find(entry.types);
+		if (!existing) { set.overloads.push(entry); return; }
+		if (existing.returnType !== entry.returnType || (existing.body && entry.body))
+			throw new CodeError(Language.main.errors.FRD, entry.token, [ name ]);
+		if (entry.body) Object.assign(existing, entry); // definition after a prototype
+	}
+
+	assign(token, value) {
+		const owner = this.#resolve(token), key = Environment.key(token);
+		owner.values.set(key, value);
+		if (owner.isNamespace) Environment.on_change(owner.prefix + key, value);
 	}
 
 }
 
 class Program {
-	constructor(statements) { this.statements = statements; }
+	// items: top level statements; main: token of "main" (if there is a main function)
+	constructor(items, main) {
+		this.items = items;
+		this.main = main;
+	}
 	async execute() {
 		Environment.create();
-		for (const statement of this.statements)
-			await statement.execute();
+		Call.depth = 0;
+		try {
+			// functions and namespaces are declared first, so that the order of
+			// the functions in the file doesn't matter
+			for (const item of this.items) if (item.declare) item.declare();
+			for (const item of this.items) await item.execute();
+			if (this.main) {
+				const fn = Environment.global.values.get("main").find([]);
+				const at = [ this.main.position, this.main.position + this.main.lexeme.length ];
+				if (fn) await Call.invoke(fn, [], at);
+			}
+		} catch (e) {
+			if (!(e instanceof ReturnException)) throw e; // "return;" outside of functions ends the program
+		}
 	}
 }
 
@@ -143,7 +288,12 @@ class Identifier extends Expression {
 		super(token.position, token.position + token.lexeme.length);
 		this.name = token;
 	}
-	async execute() { return Environment.current.get(this.name); }
+	async execute() {
+		const value = Environment.current.get(this.name);
+		if (!(value instanceof Value)) // a function name used as a value
+			throw new CodeError(Language.main.errors.UEX, [ this.start, this.end ]);
+		return value;
+	}
 }
 
 class InfixExpression extends Expression {
@@ -380,6 +530,10 @@ class Call extends Expression {
 		"rand": [ { args: [], run: () => Math.floor(Math.random() * 0x7FFFFFFF), ret: "int" } ],
 		"time": [ { args: [], run: () => Date.now(), ret: "int" } ],
 	};
+	static depth = 0; // current depth of function calls
+
+	static hasBuiltin(name) { return Object.hasOwn(Call.#functions, name); }
+
 	constructor(callee, lpar, rpar, args) {
 		super(callee.start, rpar.position + 1);
 		this.callee = callee;
@@ -387,21 +541,87 @@ class Call extends Expression {
 		this.rpar = rpar;
 		this.args = args;
 	}
+
+	/// Runs a function, parameters are passed by value.
+	/// "at" is the [ start, end ] range used to report errors.
+	static async invoke(fn, args, at) {
+		if (fn.native) return new Value(fn.native(...args.map(a => a.value)), fn.returnType);
+		if (!fn.body) throw new CodeError(Language.main.errors.FND, at, [ fn.token.lexeme ]);
+		if (Call.depth >= MAX_CALL_DEPTH) throw new CodeError(Language.main.errors.MCD, at);
+		const caller = Environment.current;
+		const env = new Environment(fn.env); // sees the globals / its namespace, not the caller
+		fn.names.forEach((name, i) => env.define(name, args[i].clone()));
+		Environment.current = env;
+		Call.depth++;
+		let returned = null;
+		try {
+			// the body runs directly in the parameters' scope, like in C++
+			for (const s of fn.body.statements) await s.execute();
+		} catch (e) {
+			if (e instanceof ReturnException) returned = e;
+			else if (e instanceof BreakException || e instanceof ContinueException)
+				throw new CodeError(Language.main.errors.BNL, [ e.statement.start, e.statement.end ]);
+			else throw e;
+		} finally {
+			Call.depth--;
+			Environment.current = caller;
+		}
+		if (returned) {
+			const s = returned.statement, value = returned.value;
+			if (fn.returnType === "void") {
+				if (value) throw new CodeError(Language.main.errors.RVD, [ s.expression.start, s.expression.end ]);
+				return new Value(undefined, "void");
+			}
+			if (!value) throw new CodeError(Language.main.errors.RNV, [ s.start, s.end ]);
+			if (value.type !== fn.returnType)
+				throw new CodeError(Language.main.errors.CST, [ s.expression.start, s.expression.end ], [
+					fn.returnType, value.type
+				]);
+			return value.clone();
+		}
+		return new Value(undefined, fn.returnType); // the end was reached without "return"
+	}
+
 	async execute() {
-		const name = this.callee.name.lexeme;
-		if (!Call.#functions[name])
-			throw new CodeError(Language.main.errors.UFN, this.callee.name, [ name ]);
-		const args = await Promise.all(this.args.map(a => a.execute()));
-		const arg_types = args.map(a => a.type);
-		const func = Call.#functions[name].find(
-			f => f.args.length === this.args.length &&
-			f.args.every((t, i) => t === arg_types[i])
+		if (!(this.callee instanceof Identifier))
+			throw new CodeError(Language.main.errors.UEX, [ this.callee.start, this.callee.end ]);
+		const token = this.callee.name, qualified = !!token.qualifiers;
+		const name = Environment.key(token), at = [ this.start, this.end ];
+		const symbol = Environment.current.lookup(token);
+		if (symbol !== undefined && !(symbol instanceof FunctionSet))
+			throw new CodeError(Language.main.errors.NAF, token, [ token.lexeme ]);
+		const args = await evalAll(this.args);
+		const types = args.map(a => a.type);
+		// 1) functions defined in the program
+		const fn = symbol && symbol.find(types);
+		if (fn) return await Call.invoke(fn, args, at);
+		// 2) built-in functions (always available, or through std::)
+		const builtins = Call.hasBuiltin(name) && (!qualified ||
+			Environment.current.findNamespace(token.qualifiers) === Environment.global.namespaces.get("std"))
+			? Call.#functions[name] : null;
+		const builtin = builtins && builtins.find(
+			f => f.args.length === types.length && f.args.every((t, i) => t === types[i])
 		);
-		if (!func) throw new CodeError(Language.main.errors.FNF, [ this.start, this.end ], [ name ]);
-		for (let i = 0; i < args.length; i++)
-			if (args[i].type !== func.args[i])
-				throw new CodeError(Language.main.errors.CST, [ this.args[i].start, this.args[i].end ], [ func.args[i], args[i].type ]);
-		return new Value(func.run(...args.map(a => a.value)), func.ret);
+		if (builtin) {
+			args.forEach((a, i) => {
+				if (a.value === undefined)
+					throw new CodeError(Language.main.errors.INI, [ this.args[i].start, this.args[i].end ]);
+			});
+			return new Value(builtin.run(...args.map(a => a.value)), builtin.ret);
+		}
+		if (!symbol && !builtins) throw new CodeError(Language.main.errors.UFN, token, [ name ]);
+		// a single candidate with the right number of arguments: say which one is wrong
+		const candidates = [
+			...(symbol ? symbol.overloads.map(o => o.types) : []),
+			...(builtins ? builtins.map(b => b.args) : [])
+		].filter(c => c.length === args.length);
+		if (candidates.length === 1) {
+			const i = candidates[0].findIndex((t, i) => t !== types[i]);
+			throw new CodeError(Language.main.errors.CST, [ this.args[i].start, this.args[i].end ], [
+				candidates[0][i], types[i]
+			]);
+		}
+		throw new CodeError(Language.main.errors.FNF, at, [ name ]);
 	}
 }
 
@@ -418,7 +638,7 @@ class Subscript extends Expression {
 		if (id.dimensions === 0) throw new CodeError(Language.main.errors.SNA, [ this.start, this.end ]);
 		if (this.indexes.length !== id.dimensions)
 			throw new CodeError(Language.main.errors.ISD, [ this.start, this.end ], [ id.dimensions, this.indexes.length ]);
-		const indexes = await Promise.all(this.indexes.map(i => i.execute()));
+		const indexes = await evalAll(this.indexes);
 		for (let i = 0; i < indexes.length; i++)
 			if (indexes[i].type !== "int")
 				throw new CodeError(Language.main.errors.IST, [ this.indexes[i].start, this.indexes[i].end ], [ indexes[i].type ]);
@@ -448,6 +668,7 @@ class Statement {
 }
 
 class Declaration extends Statement {
+	isDeclaration = true;
 	constructor(type, declarations) {
 		const last = declarations.top();
 		super(type.position, last.exp ? last.exp.end : (
@@ -466,7 +687,7 @@ class Declaration extends Statement {
 						this.type.lexeme, value.type
 					]);
 			} else if (d.sizes) { // array
-				const sizes = await Promise.all(d.sizes.map(s => s.execute()));
+				const sizes = await evalAll(d.sizes);
 				for (let i = 0; i < sizes.length; i++)
 					if (sizes[i].type !== "int")
 						throw new CodeError(Language.main.errors.ASI, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].type ]);
@@ -493,8 +714,8 @@ class Block extends Statement {
 	}
 	async execute() {
 		Environment.open();
-		for (const s of this.statements) await s.execute();
-		Environment.close();
+		try { for (const s of this.statements) await s.execute(); }
+		finally { Environment.close(); }
 	}
 }
 
@@ -508,7 +729,7 @@ class Instruction extends Statement {
 
 class If extends Statement {
 	constructor(keyword, condition, then, els) {
-		super(keyword.start, els ? els.end : then.end);
+		super(keyword.position, els ? els.end : then.end);
 		this.condition = condition;
 		this.then = then;
 		this.els = els;
@@ -527,7 +748,7 @@ const MAX_LOOP_ITERATIONS = 100000;
 
 class While extends Statement {
 	constructor(keyword, condition, block) {
-		super(keyword.start, block.end);
+		super(keyword.position, block.end);
 		this.condition = condition;
 		this.block = block;
 	}
@@ -552,7 +773,7 @@ class While extends Statement {
 
 class DoWhile extends Statement {
 	constructor(keyword, block, condition) {
-		super(keyword.start, condition.end);
+		super(keyword.position, condition.end);
 		this.block = block;
 		this.condition = condition;
 	}
@@ -576,7 +797,7 @@ class DoWhile extends Statement {
 
 class For extends Statement {
 	constructor(keyword, init, condition, increment, block) {
-		super(keyword.start, block.end);
+		super(keyword.position, block.end);
 		this.init = init;
 		this.condition = condition;
 		this.increment = increment;
@@ -584,6 +805,10 @@ class For extends Statement {
 	}
 	async execute() {
 		Environment.open();
+		try { await this.#loop(); }
+		finally { Environment.close(); }
+	}
+	async #loop() {
 		if (this.init) await this.init.execute();
 		let condition, count = 0;
 		if (this.condition) {
@@ -603,37 +828,38 @@ class For extends Statement {
 		}
 		if (count >= MAX_LOOP_ITERATIONS)
 			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
-		Environment.close();
 	}
 
 }
 
-class BreakException { }
+class BreakException { constructor(statement) { this.statement = statement; } }
 class Break extends Statement {
 	constructor(keyword) {
 		super(keyword.position, keyword.position + keyword.lexeme.length);
 		this.keyword = keyword;
 	}
-	async execute() { throw new BreakException(); }
+	async execute() { throw new BreakException(this); }
 }
 
-class ContinueException { }
+class ContinueException { constructor(statement) { this.statement = statement; } }
 class Continue extends Statement {
 	constructor(keyword) {
 		super(keyword.position, keyword.position + keyword.lexeme.length);
 		this.keyword = keyword;
 	}
-	async execute() { throw new ContinueException(); }
+	async execute() { throw new ContinueException(this); }
 }
 
 class Cout extends Statement {
 	static print = console.log;
-	constructor(c, expressions) {
+	constructor(c, expressions, qualified) {
 		super(expressions[0].start, expressions.top().end);
 		this.expressions = expressions;
 		this.c = c;
+		this.qualified = qualified; // written as std::cout / std::cin
 	}
 	async execute() {
+		if (!this.qualified) Environment.current.require(this.c);
 		for (const e of this.expressions) {
 			const data = await e.execute();
 			if (data.value === undefined)
@@ -646,12 +872,14 @@ class Cout extends Statement {
 class Cin extends Statement {
 	static prompt = async () => prompt();
 	static input_queue = [];
-	constructor(c, expressions) {
+	constructor(c, expressions, qualified) {
 		super(expressions[0].start, expressions.top().end);
 		this.expressions = expressions;
 		this.c = c;
+		this.qualified = qualified; // written as std::cout / std::cin
 	}
 	async execute() {
+		if (!this.qualified) Environment.current.require(this.c);
 		for (const e of this.expressions) {
 			let value = Cin.input_queue.shift() || await Cin.prompt(), id;
 			if (e instanceof Identifier) {
@@ -693,5 +921,96 @@ class Cin extends Statement {
 				Environment.current.assign(id, current);
 			} else Environment.current.assign(e.name, id); // just to notify change
 		}
+	}
+}
+
+// ==== Functions, namespaces ==================================================
+
+// "isDeclaration" marks what is allowed outside of functions once there is a main().
+// "declare()" is the first pass of Program.execute (see there).
+
+class FunctionDefinition extends Statement {
+	isDeclaration = true;
+	// body is null for a prototype: int f(int);
+	constructor(returnType, name, params, body, end) {
+		super(returnType.position, end);
+		this.returnType = returnType;
+		this.name = name;
+		this.params = params; // [ { type, id } ]
+		this.body = body;
+	}
+	declare() {
+		Environment.current.defineFunction({
+			token: this.name,
+			returnType: this.returnType.lexeme,
+			types: this.params.map(p => p.type.lexeme),
+			names: this.params.map(p => p.id),
+			body: this.body,
+			env: Environment.current
+		});
+	}
+	async execute() { } // already declared
+}
+
+class Return extends Statement {
+	constructor(keyword, expression) {
+		super(keyword.position, expression ? expression.end : keyword.position + keyword.lexeme.length);
+		this.expression = expression;
+	}
+	async execute() {
+		throw new ReturnException(this.expression ? await this.expression.execute() : null, this);
+	}
+}
+
+class NamespaceDeclaration extends Statement {
+	isDeclaration = true;
+	constructor(keyword, name, items, rbrace) {
+		super(keyword.position, rbrace.position + 1);
+		this.name = name;
+		this.items = items;
+	}
+	#open() { // namespaces can be reopened: namespace a { } namespace a { }
+		const outer = Environment.current, id = this.name.lexeme;
+		if (!outer.namespaces.has(id)) outer.namespaces.set(id, new Environment(outer, id));
+		return outer.namespaces.get(id);
+	}
+	declare() {
+		const outer = Environment.current;
+		Environment.current = this.#open();
+		try { for (const item of this.items) if (item.declare) item.declare(); }
+		finally { Environment.current = outer; }
+	}
+	async execute() {
+		const outer = Environment.current;
+		Environment.current = this.#open();
+		try { for (const item of this.items) await item.execute(); }
+		finally { Environment.current = outer; }
+	}
+}
+
+class UsingNamespace extends Statement {
+	isDeclaration = true;
+	constructor(keyword, path, semicolon) {
+		super(keyword.position, semicolon.position + 1);
+		this.path = path; // identifier tokens
+	}
+	async execute() {
+		const env = Environment.current, ns = env.findNamespace(this.path);
+		if (!env.usings.includes(ns)) env.usings.push(ns);
+	}
+}
+
+class UsingDeclaration extends Statement {
+	isDeclaration = true;
+	constructor(keyword, token, semicolon) {
+		super(keyword.position, semicolon.position + 1);
+		this.token = token; // qualified token
+	}
+	async execute() {
+		const t = this.token, env = Environment.current;
+		const ns = env.findNamespace(t.qualifiers);
+		if (ns.values.has(t.member)) env.aliases.set(t.member, ns);
+		else if (!(ns === Environment.global.namespaces.get("std") && Call.hasBuiltin(t.member)))
+			throw new CodeError(Language.main.errors.UVR, t, [ t.lexeme ]);
 	}
 }
