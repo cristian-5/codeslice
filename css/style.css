@@ -90,6 +90,7 @@ header {
 	grid-column-gap: 0;
 	grid-row-gap: 0;
 	height: calc(100% - 50px);
+	box-sizing: border-box;
 }
 
 #splitgrid > section {
