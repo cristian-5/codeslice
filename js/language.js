@@ -69,6 +69,7 @@ class Language {
 			},
 			saveMessage: "🍰 Code SL/CE automatically saves your changes!",
 			loveMessage: "Made with ❤️ by <b>Prof. Cristian Antonuccio</b>",
+			noErrors: "✅ The code is valid, no errors found!"
 		},
 		"IT": {
 			errors: {
@@ -137,6 +138,7 @@ class Language {
 			},
 			saveMessage: "🍰 Code SL/CE salva automaticamente le modifiche!",
 			loveMessage: "Fatto con ❤️ dal <b>Prof. Cristian Antonuccio</b>",
+			noErrors: "✅ Nessun errore trovato, il codice è valido!"
 		},
 	};
 

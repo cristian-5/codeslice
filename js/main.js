@@ -37,7 +37,10 @@ async function compile(show_error = false) {
 			endLineNumber: e.position[0], endColumn: e.position[1] + e.position[3],
 			message: e.message, severity: monaco.MarkerSeverity.Error
 		}]);
+		return;
 	}
+	if (show_error) // no errors:
+		vanillaToast.show(Language.main.noErrors, { duration: 1000, fadeDuration: 500 });
 }
 
 async function run() {
