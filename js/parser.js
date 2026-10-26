@@ -10,7 +10,10 @@ const escapedChars = {
 	'n': "\n", 't': "\t", 'r': "\r", '0': "\0"
 };
 
-const types = [ "int", "float", "char", "string", "bool" ];
+const types = [ "int", "float", "double", "char", "string", "bool" ];
+// Types that are just another name for a type: the token keeps its own lexeme
+// (so error positions are right) and gets a "canonical" name, see typeName() in tree.js.
+const typeAliases = { double: "float" };
 const headers = [ "iostream", "string", "cmath", "cstdlib", "ctime" ];
 const keywords = [
 	"cout", "cin",
@@ -140,7 +143,11 @@ class Parser {
 					} else if (letter(code[i])) {
 						t = "";
 						while (i < code.length && letter(code[i])) t += code[i++];
-						if (types.includes(t)) tokens.push({ lexeme: t, type: "type", position });
+						if (types.includes(t)) {
+								const token = { lexeme: t, type: "type", position };
+								if (Object.hasOwn(typeAliases, t)) token.canonical = typeAliases[t];
+								tokens.push(token);
+							}
 						else if (keywords.includes(t)) tokens.push({ lexeme: t, type: "keyword", position });
 						else tokens.push({ lexeme: t, type: "identifier", position });
 					} else throw new CodeError(Language.main.errors.UNC, [ position, position + 1 ]);

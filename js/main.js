@@ -21,6 +21,7 @@ async function compile(show_error = false) {
 	try {
 		const parser = new Parser(code);
 		AST = await parser.parse();
+		new TypeChecker().check(AST);
 	} catch (e) {
 		AST = null;
 		if (!(e instanceof CodeError)) {
