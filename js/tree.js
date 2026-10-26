@@ -50,6 +50,25 @@ class Library {
 	}
 	static has(header) { return header !== "" && Library.#headers.has(header); }
 
+	static #implied = new Map(); // header -> the headers it includes by itself
+
+	/// Including `header` also includes the `others`, like in a real standard library
+	/// where <iostream> pulls <cstdlib> in. It works through several levels.
+	static implies(header, ...others) {
+		Library.#implied.set(header, [ ...(Library.#implied.get(header) ?? []), ...others ]);
+	}
+
+	/// The header and everything it includes, directly or not.
+	static closure(header) {
+		const all = new Set(), visit = h => {
+			if (all.has(h)) return;
+			all.add(h);
+			for (const other of Library.#implied.get(h) ?? []) visit(other);
+		};
+		visit(header);
+		return all;
+	}
+
 	/// The header that declares a function or a constant: used to say what is missing in
 	/// "'sqrt' requires #include <cmath>". Undefined if no header has it.
 	static headerOf(name) {
@@ -78,6 +97,9 @@ class Library {
 		return list;
 	}
 }
+
+Library.implies("iostream", "cstdlib");
+Library.implies("string", "cstdlib");
 
 // ==== Values =================================================================
 

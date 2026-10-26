@@ -210,7 +210,7 @@ class Parser {
 		let usingStd = false, usingString = false;
 		for (let i = 0; i < tokens.length; i++) {
 			const t = tokens[i], next = tokens[i + 1], after = tokens[i + 2], last = out[out.length - 1];
-			if (t.type === "include") { included.add(t.header); continue; }
+			if (t.type === "include") { for (const h of Library.closure(t.header)) included.add(h); continue; }
 			if (((t.type === "keyword" && (t.lexeme === "cout" || t.lexeme === "cin")) ||
 				(t.type === "identifier" && t.lexeme === "endl")) && !included.has("iostream"))
 				throw new CodeError(errors.NIO, t, [ t.lexeme ]);

@@ -12,10 +12,10 @@ document.addEventListener("keydown", e => {
 
 let AST = null;
 
-async function compile(show_error = false) {
+async function compile(sender = null) {
 	const code = editor.getValue();
 	localStorage.setItem("code", code);
-	if (show_error) terminal.reset();
+	if (sender) terminal.reset();
 	monaco.editor.setModelMarkers(editor.getModel(), "owner", []);
 	AST = null;
 	try {
@@ -28,7 +28,7 @@ async function compile(show_error = false) {
 			console.error(e);
 			return;
 		}
-		if (show_error) {
+		if (sender) {
 			terminal.reset();
 			terminal.write(e.colorful_message);
 		}
@@ -39,12 +39,11 @@ async function compile(show_error = false) {
 		}]);
 		return;
 	}
-	if (show_error) // no errors:
-		vanillaToast.show(Language.main.noErrors, { duration: 1000, fadeDuration: 500 });
+	if (sender === "client") vanillaToast.show(Language.main.noErrors, { duration: 1000, fadeDuration: 500 });
 }
 
 async function run() {
-	await compile(true);
+	await compile("server");
 	terminal.reset();
 	document.getElementById("debug").innerHTML = ""; // clear debug view
 	if (!AST) return;
