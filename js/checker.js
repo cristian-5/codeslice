@@ -1,4 +1,3 @@
-
 // ==== Static type checker ====================================================
 //
 // Runs between the parser and the interpreter:
@@ -9,8 +8,17 @@
 //
 // Types are strings: "int", "float", "char", "bool", "string", "void", and
 // arrays "int[]", "int[][]" (the sizes are only known when the program runs).
-// There are no implicit conversions: both sides of an assignment, an
-// initialization, a return and each argument of a call must have the same type.
+// double is float.
+//
+// Implicit conversions follow C++:
+//  - bool, char, int and float convert to each other (assignments, initializers,
+//    arguments, return, array sizes and indexes, switch). Narrowing is allowed
+//    like in C++: int i = 2.7; gives 2.
+//  - the operands of an arithmetic or comparison operator go through the usual
+//    arithmetic conversions: bool and char become int, and if one of them is
+//    float the other one becomes float too. So 'a' + 1 is an int.
+//  - an expression that must be converted gets node.castTo = the target type.
+//    strings don't convert to or from anything.
 //
 // The checker needs to know what every name means, so it resolves names with
 // the same rules as Environment (see SymbolScope) and reports the errors of
@@ -22,63 +30,74 @@
 
 class TypeRules {
 
-	static isNumeric(t) { return t === "int" || t === "char" || t === "float"; }
-	static isIntegral(t) { return t === "int" || t === "char"; }
-	static isCondition(t) { return t === "bool" || t === "int"; }
+	static isArithmetic(t) { return t === "bool" || t === "char" || t === "int" || t === "float"; }
+	static isIntegral(t) { return t === "bool" || t === "char" || t === "int"; }
 	static isArray(t) { return t.endsWith("]"); }
 	static arrayOf(base, dimensions) { return base + "[]".repeat(dimensions); }
 	static elementOf(t) { return t.replace(/\[\]/g, ""); }
 	static dimensions(t) { return (t.match(/\[\]/g) || []).length; }
 
-	// "left operator right" -> type of the result
-	static #arithmetic = (() => {
-		const table = new Map();
-		const add = (op, ...rows) => rows.forEach(([ l, r, result ]) => table.set(l + op + r, result));
-		const product = [
-			[ "int", "int", "int" ], [ "int", "char", "int" ], [ "char", "int", "int" ],
-			[ "int", "float", "float" ], [ "float", "int", "float" ], [ "float", "float", "float" ],
-		];
-		add("+", [ "string", "string", "string" ], [ "char", "char", "char" ],
-			[ "int", "int", "int" ], [ "int", "char", "int" ], [ "char", "int", "int" ],
-			[ "int", "float", "float" ], [ "float", "int", "float" ], [ "float", "float", "float" ]);
-		add("-", ...product);
-		add("*", ...product);
-		add("/", ...product);
-		add("%", [ "int", "int", "int" ], [ "int", "char", "int" ], [ "char", "int", "int" ]);
-		add("&", [ "int", "int", "int" ]);
-		add("|", [ "int", "int", "int" ]);
-		return table;
-	})();
+	/// Integral promotion: bool and char become int.
+	static promote(t) { return t === "float" ? "float" : "int"; }
+	/// Usual arithmetic conversions: the type both operands are converted to.
+	static common(l, r) { return l === "float" || r === "float" ? "float" : "int"; }
 
-	/// Type of "l op r", or null if the operator doesn't accept those types.
-	static infix(op, l, r) {
-		const { isNumeric } = TypeRules;
-		switch (op) {
-			case "&&": case "||":
-				return l === "bool" && r === "bool" ? "bool" : null;
-			case ">": case "<": case ">=": case "<=":
-				return isNumeric(l) && isNumeric(r) ? "bool" : null;
-			case "==": case "!=":
-				return (isNumeric(l) && isNumeric(r)) || (l === r && (l === "string" || l === "bool"))
-					? "bool" : null;
-			default:
-				return TypeRules.#arithmetic.get(l + op + r) ?? null;
-		}
+	/// Can a value of type `from` be used where `to` is expected?
+	static canConvert(from, to) {
+		return from === to || (TypeRules.isArithmetic(from) && TypeRules.isArithmetic(to));
 	}
 
-	/// Type of "op t" (-, !, ~, ++, --), or null.
-	static prefix(op, t) {
+	/// How good is the conversion, to choose between overloads: 0 exact match,
+	/// 1 promotion (bool or char to int), 2 conversion, null impossible.
+	static rank(from, to) {
+		if (from === to) return 0;
+		if (!TypeRules.canConvert(from, to)) return null;
+		return to === "int" && (from === "bool" || from === "char") ? 1 : 2;
+	}
+
+	/// "l op r" -> { type: type of the result, operand: type the two operands
+	/// are converted to (null: no conversion) }, or null if the operator
+	/// doesn't accept those types.
+	static infix(op, l, r) {
+		const { isArithmetic, isIntegral, common } = TypeRules;
+		const numbers = isArithmetic(l) && isArithmetic(r);
 		switch (op) {
-			case "-": return t === "float" ? "float" : TypeRules.isIntegral(t) ? "int" : null;
-			case "~": return TypeRules.isIntegral(t) ? "int" : null;
-			case "!": return t === "bool" ? "bool" : null;
-			case "++": case "--": return TypeRules.isNumeric(t) ? t : null;
+			case "&&": case "||": // the operands are converted to bool
+				return numbers ? { type: "bool", operand: "bool" } : null;
+			case "==": case "!=":
+				if (l === "string" && r === "string") return { type: "bool", operand: null };
+				// falls through
+			case "<": case ">": case "<=": case ">=":
+				return numbers ? { type: "bool", operand: common(l, r) } : null;
+			case "+":
+				if (l === "string" && r === "string") return { type: "string", operand: null };
+				// falls through
+			case "-": case "*": case "/":
+				return numbers ? { type: common(l, r), operand: common(l, r) } : null;
+			case "%": case "&": case "|":
+				return isIntegral(l) && isIntegral(r) ? { type: "int", operand: "int" } : null;
+		}
+		return null;
+	}
+
+	/// Same for "op t" (-, +, !, ~, ++, --).
+	static prefix(op, t) {
+		const { isArithmetic, isIntegral, promote } = TypeRules;
+		switch (op) {
+			case "-": case "+":
+				return isArithmetic(t) ? { type: promote(t), operand: promote(t) } : null;
+			case "~": return isIntegral(t) ? { type: "int", operand: "int" } : null;
+			case "!": return isArithmetic(t) ? { type: "bool", operand: "bool" } : null;
+			case "++": case "--": {
+				const type = TypeRules.postfix(t);
+				return type ? { type, operand: null } : null;
+			}
 		}
 		return null;
 	}
 
 	/// Type of "t++" and "t--", or null.
-	static postfix(t) { return TypeRules.isNumeric(t) ? t : null; }
+	static postfix(t) { return t === "char" || t === "int" || t === "float" ? t : null; }
 
 }
 
@@ -95,7 +114,8 @@ class VarInfo {
 }
 
 /// All the functions sharing one name (overloads) in one scope.
-/// entry: { token, returnType, types, body (is it defined, or just a prototype?) }
+/// entry: { token, returnType, types, body (is it defined, or just a prototype?),
+///          native (true for the functions of a Library) }
 class FuncInfo {
 	constructor(name) {
 		this.name = name;
@@ -124,7 +144,8 @@ class SymbolScope {
 		this.usings = [];            // "using namespace x;"
 	}
 
-	static createGlobal() {
+	/// "included" are the headers of the program: their native functions are defined.
+	static createGlobal(included = []) {
 		const global = new SymbolScope(undefined, "");
 		global.values.set("true",  new VarInfo("bool", true, true));
 		global.values.set("false", new VarInfo("bool", true, true));
@@ -133,6 +154,9 @@ class SymbolScope {
 		std.values.set("cout", new StreamInfo());
 		std.values.set("cin",  new StreamInfo());
 		global.namespaces.set("std", std);
+		for (const f of Library.functions(included))
+			for (const scope of [ global, std ])
+				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: true });
 		return global;
 	}
 
@@ -212,6 +236,10 @@ class SymbolScope {
 			throw new CodeError(errors.VRD, entry.token, [ name ]);
 		const existing = set.find(entry.types);
 		if (!existing) { set.overloads.push(entry); return; }
+		if (existing.native) { // a function of the program replaces a native one
+			if (!entry.native) { delete existing.native; Object.assign(existing, entry); }
+			return;
+		}
 		if (existing.returnType !== entry.returnType || (existing.body && entry.body))
 			throw new CodeError(errors.FRD, entry.token, [ name ]);
 		if (entry.body) Object.assign(existing, entry); // definition after a prototype
@@ -244,6 +272,11 @@ class TypeChecker {
 		try { return action(); } finally { this.#scope = outer; }
 	}
 
+	/// The expression is converted to `type` when it is evaluated (if it isn't of that type already).
+	#coerce(expression, type) {
+		expression.castTo = expression.valueType === type ? null : type;
+	}
+
 	/// A variable declared with const cannot be assigned, incremented or read by cin.
 	#assertMutable(identifier) {
 		const info = this.#scope.resolve(identifier.name);
@@ -251,10 +284,10 @@ class TypeChecker {
 			this.#fail("CAS", this.#range(identifier), [ identifier.name.lexeme ]);
 	}
 
-	/// Visits a condition (if, while, do, for): it must be bool or int.
+	/// Visits a condition (if, while, do, for): any number can be a condition.
 	#condition(expression) {
 		const t = expression.accept(this);
-		if (!TypeRules.isCondition(t))
+		if (!TypeRules.isArithmetic(t))
 			this.#fail("BOO", this.#range(expression), [ t ]);
 	}
 
@@ -264,7 +297,7 @@ class TypeChecker {
 	// so the order of the functions in the file doesn't matter. The body of the
 	// functions is checked at the end, when all the global names are known.
 	visitProgram(node) {
-		this.#scope = SymbolScope.createGlobal();
+		this.#scope = SymbolScope.createGlobal(node.includes);
 		this.#function = null;
 		this.#bodies = [];
 		for (const item of node.items) if (item.hoist) item.hoist(this);
@@ -315,9 +348,11 @@ class TypeChecker {
 	visitUsingDeclaration(node) {
 		const t = node.token, scope = this.#scope;
 		const ns = scope.findNamespace(t.qualifiers);
-		if (ns.values.has(t.member)) scope.aliases.set(t.member, ns);
-		else if (!(ns === scope.std && (Call.hasBuiltin(t.member) || t.member === "string")))
-			this.#fail("UVR", t, [ t.lexeme ]); // (string is a type, see Parser)
+		if (ns.values.has(t.member)) { scope.aliases.set(t.member, ns); return; }
+		if (ns === scope.std && t.member === "string") return; // string is a type, see Parser
+		const header = ns === scope.std ? Library.headerOf(t.member) : undefined;
+		if (header) this.#fail("NIH", t, [ t.member, header ]);
+		this.#fail("UVR", t, [ t.lexeme ]);
 	}
 
 	// ---- Declarations ---------------------------------------------------------
@@ -328,15 +363,19 @@ class TypeChecker {
 			let info;
 			if (d.exp) { // initialized
 				const t = d.exp.accept(this);
-				if (t !== type)
-					this.#fail("CST", this.#range(node), [ type, t ]);
+				if (!TypeRules.canConvert(t, type))
+					this.#fail("CST", this.#range(node), [ t, type ]);
+				this.#coerce(d.exp, type);
 				info = new VarInfo(type, node.isConst, node.isConst && d.exp.isConstant);
 			} else if (d.sizes) { // array
 				d.sizes.forEach(size => size.accept(this));
 				for (const size of d.sizes)
 					if (!size.isConstant) this.#fail("ASC", this.#range(size));
-				for (const size of d.sizes)
-					if (size.valueType !== "int") this.#fail("ASI", this.#range(size), [ size.valueType ]);
+				for (const size of d.sizes) {
+					if (!TypeRules.isIntegral(size.valueType))
+						this.#fail("ASI", this.#range(size), [ size.valueType ]);
+					this.#coerce(size, "int");
+				}
 				info = new VarInfo(TypeRules.arrayOf(type, d.sizes.length));
 			} else info = new VarInfo(type);
 			this.#scope.define(d.id, info);
@@ -382,6 +421,7 @@ class TypeChecker {
 		const t = node.expression.accept(this);
 		if (!TypeRules.isIntegral(t))
 			this.#fail("SWT", this.#range(node.expression), [ t ]);
+		this.#coerce(node.expression, "int");
 		this.#inScope(new SymbolScope(this.#scope), () => { // the whole body is one scope
 			for (const s of node.body) s.accept(this);
 		});
@@ -391,6 +431,7 @@ class TypeChecker {
 		const e = node.expression, t = e.accept(this);
 		if (!e.isConstant) this.#fail("CSC", this.#range(e));
 		if (!TypeRules.isIntegral(t)) this.#fail("CLT", this.#range(e), [ t ]);
+		this.#coerce(e, "int");
 	}
 
 	visitDefaultLabel() { }
@@ -405,7 +446,8 @@ class TypeChecker {
 		if (expected === "void") {
 			if (e) this.#fail("RVD", this.#range(e));
 		} else if (!e) this.#fail("RNV", this.#range(node));
-		else if (t !== expected) this.#fail("CST", this.#range(e), [ expected, t ]);
+		else if (!TypeRules.canConvert(t, expected)) this.#fail("CST", this.#range(e), [ t, expected ]);
+		else this.#coerce(e, expected);
 	}
 
 	visitCout(node) {
@@ -445,18 +487,22 @@ class TypeChecker {
 		const l = target.accept(this);
 		if (TypeRules.isArray(l)) // a whole array cannot be assigned
 			this.#fail("IAT", this.#range(target));
-		// a += b is checked as a = a + b: the result must have the type of a
+		// a += b is checked as a = a + b: the result is converted to the type of a
 		const r = node.value.accept(this);
-		if (l !== r) this.#fail("CST", this.#range(node), [ l, r ]);
+		if (!TypeRules.canConvert(r, l)) this.#fail("CST", this.#range(node), [ r, l ]);
+		this.#coerce(node.value, l);
 		return node.valueType = l;
 	}
 
 	visitInfixExpression(node) {
 		const l = node.left.accept(this), r = node.right.accept(this);
-		const op = node.operator.lexeme, type = TypeRules.infix(op, l, r);
-		if (!type) this.#fail("UOB", node.operator, [ op, l, r ]);
+		const op = node.operator.lexeme, rule = TypeRules.infix(op, l, r);
+		if (!rule) this.#fail("UOB", node.operator, [ op, l, r ]);
+		for (const operand of [ node.left, node.right ])
+			if (rule.operand) this.#coerce(operand, rule.operand);
+			else operand.castTo = null;
 		node.isConstant = node.left.isConstant && node.right.isConstant;
-		return node.valueType = type;
+		return node.valueType = rule.type;
 	}
 
 	visitPrefixExpression(node) {
@@ -467,10 +513,12 @@ class TypeChecker {
 				this.#fail("IAT", this.#range(target));
 			if (target instanceof Identifier) this.#assertMutable(target);
 		}
-		const t = target.accept(this), type = TypeRules.prefix(op, t);
-		if (!type) this.#fail("UPO", node.operator, [ op, t ]);
+		const t = target.accept(this), rule = TypeRules.prefix(op, t);
+		if (!rule) this.#fail("UPO", node.operator, [ op, t ]);
+		if (rule.operand) this.#coerce(target, rule.operand);
+		else target.castTo = null;
 		node.isConstant = !changes && target.isConstant;
-		return node.valueType = type;
+		return node.valueType = rule.type;
 	}
 
 	visitPostfixExpression(node) {
@@ -492,47 +540,46 @@ class TypeChecker {
 			this.#fail("ISD", this.#range(node), [ dimensions, node.indexes.length ]);
 		for (const index of node.indexes) {
 			const it = index.accept(this);
-			if (it !== "int") this.#fail("IST", this.#range(index), [ it ]);
+			if (!TypeRules.isIntegral(it)) this.#fail("IST", this.#range(index), [ it ]);
+			this.#coerce(index, "int");
 		}
 		return node.valueType = TypeRules.elementOf(t);
 	}
 
+	// Chooses the overload like C++: the candidates are the functions with that
+	// name whose parameters accept the arguments (with implicit conversions), and
+	// the winner must be better than all the others (exact match, then promotion,
+	// then conversion) for at least one argument and not worse for any.
 	visitCall(node) {
 		if (!(node.callee instanceof Identifier))
 			this.#fail("UEX", this.#range(node.callee));
-		const token = node.callee.name, qualified = !!token.qualifiers;
-		const name = Environment.key(token), at = this.#range(node);
+		const token = node.callee.name, name = Environment.key(token);
 		const symbol = this.#scope.lookup(token);
 		if (symbol !== undefined && !(symbol instanceof FuncInfo))
 			this.#fail("NAF", token, [ token.lexeme ]);
 		const types = node.args.map(a => a.accept(this));
-		node.signature = types;
-		node.builtin = null;
-		// 1) functions defined in the program
-		const fn = symbol && symbol.find(types);
-		if (fn) return node.valueType = fn.returnType;
-		// 2) built-in functions (always available, or through std::)
-		const builtins = Call.hasBuiltin(name) && (!qualified ||
-			this.#scope.findNamespace(token.qualifiers) === this.#scope.std)
-			? Call.builtins(name) : null;
-		const builtin = builtins && builtins.find(
-			f => f.args.length === types.length && f.args.every((t, i) => t === types[i])
-		);
-		if (builtin) {
-			node.builtin = builtin;
-			return node.valueType = builtin.ret;
+		if (symbol === undefined) {
+			const header = Library.headerOf(name);
+			if (header) this.#fail("NIH", token, [ name, header ]);
+			this.#fail("UFN", token, [ name ]);
 		}
-		if (!symbol && !builtins) this.#fail("UFN", token, [ name ]);
-		// a single candidate with the right number of arguments: say which one is wrong
-		const candidates = [
-			...(symbol ? symbol.overloads.map(o => o.types) : []),
-			...(builtins ? builtins.map(b => b.args) : [])
-		].filter(c => c.length === types.length);
-		if (candidates.length === 1) {
-			const i = candidates[0].findIndex((t, i) => t !== types[i]);
-			this.#fail("CST", this.#range(node.args[i]), [ candidates[0][i], types[i] ]);
+		const sameCount = symbol.overloads.filter(f => f.types.length === types.length);
+		const viable = sameCount.filter(f => f.types.every((t, i) => TypeRules.canConvert(types[i], t)));
+		if (viable.length === 0) {
+			// a single candidate with the right number of arguments: say which one is wrong
+			if (sameCount.length === 1) {
+				const i = sameCount[0].types.findIndex((t, i) => !TypeRules.canConvert(types[i], t));
+				this.#fail("CST", this.#range(node.args[i]), [ types[i], sameCount[0].types[i] ]);
+			}
+			this.#fail("FNF", this.#range(node), [ name ]);
 		}
-		this.#fail("FNF", at, [ name ]);
+		const ranks = viable.map(f => f.types.map((t, i) => TypeRules.rank(types[i], t)));
+		const better = (a, b) => ranks[a].every((r, i) => r <= ranks[b][i]) && ranks[a].some((r, i) => r < ranks[b][i]);
+		const best = viable.filter((_, a) => viable.every((_, b) => a === b || better(a, b)));
+		if (best.length !== 1) this.#fail("AMB", this.#range(node), [ name ]);
+		node.signature = best[0].types;
+		node.args.forEach((arg, i) => this.#coerce(arg, best[0].types[i]));
+		return node.valueType = best[0].returnType;
 	}
 
 }

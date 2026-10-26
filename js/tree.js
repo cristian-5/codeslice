@@ -8,7 +8,7 @@ const MAX_CALL_DEPTH = 2000;
 // swap Environment.current, so overlapping evaluations would corrupt it.
 async function evalAll(expressions) {
 	const values = [];
-	for (const e of expressions) values.push(await e.execute());
+	for (const e of expressions) values.push(await e.evaluate());
 	return values;
 }
 
@@ -26,6 +26,40 @@ class Visitable {
 
 /// Name of the type a "type" token stands for (double is an alias of float).
 const typeName = token => token.canonical ?? token.lexeme;
+
+/// Native functions (written in JavaScript) brought by an #include.
+/// A library file registers its header when it is loaded, see cmath.js:
+///
+///     Library.register("cmath", { sqrt: [ { args: [ "float" ], ret: "float", run: Math.sqrt } ] });
+///
+/// "#include <cmath>" then defines sqrt, both as std::sqrt and in the global
+/// namespace, for the TypeChecker and for the interpreter. Overloads are chosen
+/// with the same rules as the functions of the program (including the implicit
+/// conversions of the arguments).
+class Library {
+	static #headers = new Map(); // header -> { name: [ { args, ret, run } ] }
+
+	static register(header, functions) { Library.#headers.set(header, functions); }
+	static has(header) { return Library.#headers.has(header); }
+
+	/// The header that declares a function: used to say what is missing in
+	/// "'sqrt' requires #include <cmath>". Undefined if no header has it.
+	static headerOf(name) {
+		for (const [ header, functions ] of Library.#headers)
+			if (Object.hasOwn(functions, name)) return header;
+	}
+
+	/// All the overloads brought by the included headers: [ { name, args, ret, run } ].
+	static functions(included) {
+		const list = [];
+		for (const header of included) {
+			const functions = Library.#headers.get(header);
+			if (functions) for (const name in functions)
+				for (const f of functions[name]) list.push({ name, ...f });
+		}
+		return list;
+	}
+}
 
 // ==== Values =================================================================
 
@@ -60,6 +94,20 @@ class Value {
 		return this.value.toString();
 	}
 	clone() { return new Value(structuredClone(this.value), this.type); }
+	/// This value converted (implicitly, like in C++) to bool, char, int or float.
+	/// The TypeChecker decides where this happens, see Expression.castTo.
+	/// An uninitialized value stays uninitialized.
+	to(type) {
+		if (this.type === type) return this;
+		let v = this.value;
+		if (v !== undefined) switch (type) {
+			case "bool":  v = v !== 0; break;
+			case "int":   v = Math.trunc(Number(v)); break;
+			case "char":  v = Math.trunc(Number(v)) & 0xFF; break;
+			case "float": v = Number(v); break;
+		}
+		return new Value(v, type);
+	}
 }
 
 // ==== Functions & namespaces =================================================
@@ -97,7 +145,8 @@ class Environment {
 	static on_define = (id, data) => {};
 	static on_change = (id, data) => {};
 
-	static create() {
+	/// "included" are the headers of the program: their native functions are defined.
+	static create(included = []) {
 		const global = new Environment(undefined, "");
 		global.values.set("true",  new Value(true, "bool"));
 		global.values.set("false", new Value(false, "bool"));
@@ -106,6 +155,9 @@ class Environment {
 		std.values.set("cout", new StreamSymbol());
 		std.values.set("cin",  new StreamSymbol());
 		global.namespaces.set("std", std);
+		for (const f of Library.functions(included))
+			for (const scope of [ global, std ])
+				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: f.run });
 		Environment.global = Environment.current = global;
 	}
 	static open() { Environment.current = new Environment(Environment.current); }
@@ -203,6 +255,10 @@ class Environment {
 			throw new CodeError(Language.main.errors.VRD, entry.token, [ name ]);
 		const existing = set.find(entry.types);
 		if (!existing) { set.overloads.push(entry); return; }
+		if (existing.native) { // a function of the program replaces a native one
+			if (!entry.native) { delete existing.native; Object.assign(existing, entry); }
+			return;
+		}
 		if (existing.returnType !== entry.returnType || (existing.body && entry.body))
 			throw new CodeError(Language.main.errors.FRD, entry.token, [ name ]);
 		if (entry.body) Object.assign(existing, entry); // definition after a prototype
@@ -218,13 +274,15 @@ class Environment {
 
 class Program extends Visitable {
 	// items: top level statements; main: token of "main" (if there is a main function)
-	constructor(items, main) {
+	// includes: the headers of the #include lines
+	constructor(items, main, includes = new Set()) {
 		super();
 		this.items = items;
 		this.main = main;
+		this.includes = includes;
 	}
 	async execute() {
-		Environment.create();
+		Environment.create(this.includes);
 		Call.depth = 0;
 		try {
 			// functions and namespaces are declared first, so that the order of
@@ -248,10 +306,17 @@ class Expression extends Visitable {
 	// filled in by the TypeChecker, the interpreter relies on them:
 	valueType = null;   // type of the value: "int", "float", "char", "bool", "string", "void", "int[]"...
 	isConstant = false; // made only of literals and const variables (array sizes, case labels)
+	castTo = null;      // implicit conversion: the type the value must be converted to, if any
 	constructor(start, end) {
 		super();
 		this.start = start;
 		this.end = end;
+	}
+	/// The value of the expression after the implicit conversion (if there is one).
+	/// This is what the parent of the expression uses; execute() is the raw value.
+	async evaluate() {
+		const value = await this.execute();
+		return this.castTo ? value.to(this.castTo) : value;
 	}
 }
 
@@ -267,7 +332,7 @@ class Assignment extends Expression {
 		this.value = base ? new InfixExpression(left, { ...operator, lexeme: base }, right) : right;
 	}
 	async execute() {
-		const right = await this.value.execute();
+		const right = await this.value.evaluate();
 		if (this.left instanceof Subscript) {
 			const id = await this.left.execute(right.clone());
 			Environment.current.assign(id, Environment.current.get(id)); // notifies the debug view
@@ -307,7 +372,7 @@ class Identifier extends Expression {
 
 class InfixExpression extends Expression {
 	// Which types an operator accepts is decided by the TypeChecker (see TypeRules),
-	// here the type of the result (valueType) is already known.
+	// the operands are already converted to the same type and valueType is the result.
 	static #operations = {
 		"+":  (a, b) => a + b,
 		"-":  (a, b) => a - b,
@@ -332,12 +397,16 @@ class InfixExpression extends Expression {
 		this.right = right;
 	}
 	async execute() {
-		const l = await this.left.execute(), r = await this.right.execute();
+		const op = this.operator.lexeme;
+		const l = await this.left.evaluate();
 		if (l.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
+		// && and || don't evaluate the right side if the left one decides the result
+		if (op === "&&" && !l.value) return new Value(false, "bool");
+		if (op === "||" && l.value) return new Value(true, "bool");
+		const r = await this.right.evaluate();
 		if (r.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.right.start, this.right.end ]);
-		const op = this.operator.lexeme;
 		if ([ '/', '%' ].includes(op) && r.value === 0)
 			throw new CodeError(Language.main.errors.DBZ, [ this.right.start, this.right.end ]);
 		return new Value(InfixExpression.#operations[op](l.value, r.value, this.valueType), this.valueType);
@@ -364,11 +433,12 @@ class PrefixExpression extends Expression {
 	}
 	async execute() {
 		const op = this.operator.lexeme;
-		const r = await this.right.execute();
+		const r = await this.right.evaluate();
 		if (r.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.right.start, this.right.end ]);
 		switch (op) {
 			case "-": return new Value(-r.value, this.valueType);
+			case "+": return new Value(+r.value, this.valueType);
 			case "!": return new Value(!r.value, this.valueType);
 			case "~": return new Value(~r.value, this.valueType);
 		}
@@ -385,7 +455,7 @@ class PostfixExpression extends Expression {
 		this.operator = operator;
 	}
 	async execute() {
-		const l = await this.left.execute();
+		const l = await this.left.evaluate();
 		if (l.value === undefined)
 			throw new CodeError(Language.main.errors.INI, [ this.left.start, this.left.end ]);
 		const result = l.clone(); // the old value is the result
@@ -396,54 +466,11 @@ class PostfixExpression extends Expression {
 }
 
 class Call extends Expression {
-	static #functions = {
-		"sqrt": [
-			{ args: [ "float" ], run: Math.sqrt, ret: "float" },
-			{ args: [ "int" ],   run: Math.sqrt, ret: "float" },
-		],
-		"abs": [
-			{ args: [ "float" ], run: Math.abs, ret: "float" },
-			{ args: [ "int" ],   run: Math.abs, ret: "float" },
-		],
-		"pow": [
-			{ args: [ "float", "float" ], run: Math.pow, ret: "float" },
-			{ args: [ "int", "int" ],     run: Math.pow, ret: "float" },
-		],
-		"sin": [
-			{ args: [ "float" ], run: Math.sin, ret: "float" },
-			{ args: [ "int" ],   run: Math.sin, ret: "float" },
-		],
-		"cos": [
-			{ args: [ "float" ], run: Math.cos, ret: "float" },
-			{ args: [ "int" ],   run: Math.cos, ret: "float" },
-		],
-		"tan": [
-			{ args: [ "float" ], run: Math.tan, ret: "float" },
-			{ args: [ "int" ],   run: Math.tan, ret: "float" },
-		],
-		"exp": [
-			{ args: [ "float" ], run: Math.exp, ret: "float" },
-			{ args: [ "int" ],   run: Math.exp, ret: "float" },
-		],
-		"log": [
-			{ args: [ "float" ], run: Math.log, ret: "float" },
-			{ args: [ "int" ],   run: Math.log, ret: "float" },
-		],
-		"floor": [ { args: [ "float" ], run: Math.floor, ret: "float" } ],
-		"ceil": [ { args: [ "float" ], run: Math.ceil, ret: "float" } ],
-		"round": [ { args: [ "float" ], run: Math.round, ret: "float" } ],
-		"rand": [ { args: [], run: () => Math.floor(Math.random() * 0x7FFFFFFF), ret: "int" } ],
-		"time": [ { args: [], run: () => Date.now(), ret: "int" } ],
-	};
 	static depth = 0; // current depth of function calls
 
-	static hasBuiltin(name) { return Object.hasOwn(Call.#functions, name); }
-	/// The overloads of a built-in function: [ { args, run, ret } ] (used by the TypeChecker).
-	static builtins(name) { return Call.#functions[name]; }
 
 	// filled in by the TypeChecker:
-	signature = null; // types of the arguments, picks the overload of a function of the program
-	builtin = null;   // the built-in overload { args, run, ret } being called, or null
+	signature = null; // parameter types of the overload being called (the arguments are converted to them)
 
 	constructor(callee, lpar, rpar, args) {
 		super(callee.start, rpar.position + 1);
@@ -484,15 +511,12 @@ class Call extends Expression {
 
 	async execute() {
 		const token = this.callee.name, at = [ this.start, this.end ];
-		const args = await evalAll(this.args);
-		if (this.builtin) {
-			args.forEach((a, i) => {
-				if (a.value === undefined)
-					throw new CodeError(Language.main.errors.INI, [ this.args[i].start, this.args[i].end ]);
-			});
-			return new Value(this.builtin.run(...args.map(a => a.value)), this.builtin.ret);
-		}
+		const args = await evalAll(this.args); // already converted to the parameter types
 		const fn = Environment.current.lookup(token).find(this.signature);
+		if (fn.native) args.forEach((a, i) => {
+			if (a.value === undefined)
+				throw new CodeError(Language.main.errors.INI, [ this.args[i].start, this.args[i].end ]);
+		});
 		return await Call.invoke(fn, args, at);
 	}
 }
@@ -549,7 +573,7 @@ class Declaration extends Statement {
 		for (const d of this.declarations) {
 			let value;
 			if (d.exp) { // assignment
-				value = (await d.exp.execute()).clone(); // own copy, never share another variable's Value
+				value = (await d.exp.evaluate()).clone(); // own copy, never share another variable's Value
 				if (this.isConst) value.isConst = true;
 			} else if (d.sizes) { // array
 				const sizes = await evalAll(d.sizes);
@@ -598,7 +622,7 @@ class If extends Statement {
 		this.els = els;
 	}
 	async execute() {
-		const condition = await this.condition.execute();
+		const condition = await this.condition.evaluate();
 		if (condition.value) await this.then.execute();
 		else if (this.els) await this.els.execute();
 	}
@@ -614,7 +638,7 @@ class While extends Statement {
 		this.block = block;
 	}
 	async execute() {
-		let condition = await this.condition.execute();
+		let condition = await this.condition.evaluate();
 		let count = 0;
 		while (condition.value && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
@@ -622,7 +646,7 @@ class While extends Statement {
 				if (e instanceof BreakException) break;
 				if (!(e instanceof ContinueException)) throw e;
 			}
-			condition = await this.condition.execute();
+			condition = await this.condition.evaluate();
 		}
 		if (count >= MAX_LOOP_ITERATIONS)
 			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
@@ -643,7 +667,7 @@ class DoWhile extends Statement {
 				if (e instanceof BreakException) break;
 				if (!(e instanceof ContinueException)) throw e;
 			}
-			condition = await this.condition.execute();
+			condition = await this.condition.evaluate();
 		} while (condition.value && count++ < MAX_LOOP_ITERATIONS);
 		if (count >= MAX_LOOP_ITERATIONS)
 			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
@@ -666,7 +690,7 @@ class For extends Statement {
 	async #loop() {
 		if (this.init) await this.init.execute();
 		let condition, count = 0;
-		if (this.condition) condition = await this.condition.execute();
+		if (this.condition) condition = await this.condition.evaluate();
 		while ((!this.condition || condition.value) && count++ < MAX_LOOP_ITERATIONS) {
 			try { await this.block.execute(); }
 			catch (e) { // "continue" must still reach the update / condition below
@@ -674,7 +698,7 @@ class For extends Statement {
 				if (!(e instanceof ContinueException)) throw e;
 			}
 			if (this.increment) await this.increment.execute();
-			if (this.condition) condition = await this.condition.execute();
+			if (this.condition) condition = await this.condition.evaluate();
 		}
 		if (count >= MAX_LOOP_ITERATIONS)
 			throw new CodeError(Language.main.errors.MLI, [ this.condition.start, this.condition.end ]);
@@ -706,7 +730,7 @@ class Switch extends Statement {
 	}
 	async execute() {
 		const errors = Language.main.errors;
-		const value = await this.expression.execute();
+		const value = await this.expression.evaluate();
 		if (value.value === undefined)
 			throw new CodeError(errors.INI, [ this.expression.start, this.expression.end ]);
 		// find where to jump, checking all the labels (not only the matching one)
@@ -717,7 +741,7 @@ class Switch extends Statement {
 			const s = this.body[i];
 			if (s instanceof DefaultLabel) { fallback = i; continue; }
 			if (!(s instanceof CaseLabel)) continue;
-			const e = s.expression, label = await e.execute();
+			const e = s.expression, label = await e.evaluate();
 			if (seen.has(label.value)) throw new CodeError(errors.DCV, [ e.start, e.end ], [ label.toString() ]);
 			seen.add(label.value);
 			if (start < 0 && label.value === value.value) start = i;
@@ -761,7 +785,7 @@ class Cout extends Statement {
 	}
 	async execute() {
 		for (const e of this.expressions) {
-			const data = await e.execute();
+			const data = await e.evaluate();
 			if (data.value === undefined)
 				throw new CodeError(Language.main.errors.INI, [ e.start, e.end ]);
 			Cout.print(data.toString());
@@ -856,7 +880,7 @@ class Return extends Statement {
 		this.expression = expression;
 	}
 	async execute() {
-		throw new ReturnException(this.expression ? await this.expression.execute() : null, this);
+		throw new ReturnException(this.expression ? await this.expression.evaluate() : null, this);
 	}
 }
 
@@ -909,8 +933,7 @@ class UsingDeclaration extends Statement {
 		const t = this.token, env = Environment.current;
 		const ns = env.findNamespace(t.qualifiers);
 		if (ns.values.has(t.member)) env.aliases.set(t.member, ns);
-		else if (!(ns === Environment.global.namespaces.get("std") &&
-			(Call.hasBuiltin(t.member) || t.member === "string"))) // string is a type, see Parser
+		else if (!(ns === Environment.global.namespaces.get("std") && t.member === "string")) // string is a type, see Parser
 			throw new CodeError(Language.main.errors.UVR, t, [ t.lexeme ]);
 	}
 }

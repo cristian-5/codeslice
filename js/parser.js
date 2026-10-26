@@ -14,7 +14,10 @@ const types = [ "int", "float", "double", "char", "string", "bool" ];
 // Types that are just another name for a type: the token keeps its own lexeme
 // (so error positions are right) and gets a "canonical" name, see typeName() in tree.js.
 const typeAliases = { double: "float" };
-const headers = [ "iostream", "string", "cmath", "cstdlib", "ctime" ];
+// iostream and string are handled by the parser itself, the others are libraries
+// of native functions that register themselves (cmath.js, cstdlib.js, ctime.js).
+const builtinHeaders = [ "iostream", "string" ];
+const isHeader = name => builtinHeaders.includes(name) || Library.has(name);
 const keywords = [
 	"cout", "cin",
 	"if", "else",
@@ -89,7 +92,7 @@ class Parser {
 					while (i < code.length && code[i] !== '\n') i++;
 					const m = code.substring(position, i).match(/^#\s*include\s*<\s*([\w.]+)\s*>\s*(\/\/.*)?$/);
 					if (!m) throw new CodeError(Language.main.errors.BIN, [ position, i ]);
-					if (!headers.includes(m[1])) throw new CodeError(Language.main.errors.UHD, [ position, i ], [ m[1] ]);
+					if (!isHeader(m[1])) throw new CodeError(Language.main.errors.UHD, [ position, i ], [ m[1] ]);
 					tokens.push({ lexeme: code.substring(position, i), type: "include", header: m[1], position });
 				} break;
 				case '"': {
@@ -203,7 +206,7 @@ class Parser {
 	// Checks #include / using against what the code uses, and turns std::string
 	// into a single "string" type token. #include tokens are removed.
 	#headers(tokens) {
-		const errors = Language.main.errors, included = new Set(), out = [];
+		const errors = Language.main.errors, included = this.included = new Set(), out = [];
 		let usingStd = false, usingString = false;
 		for (let i = 0; i < tokens.length; i++) {
 			const t = tokens[i], next = tokens[i + 1], after = tokens[i + 2], last = out[out.length - 1];
@@ -254,7 +257,7 @@ class Parser {
 					throw new CodeError(Language.main.errors.OUT, first[i]);
 			});
 		} else throw new CodeError(Language.main.errors.NOM, [ 0, 1 ]);
-		return new Program(items, main ? main.name : null);
+		return new Program(items, main ? main.name : null, this.included);
 	}
 	// <top_level> := <using> | <namespace> | <function> | <block>
 	#topLevel() {
