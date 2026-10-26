@@ -52,6 +52,7 @@ require([ "vs/editor/editor.main" ], function() {
 			"return"
 		],
 		keywords: [
+			"nullptr",
 			"true", "false",
 			"namespace", "using", "const"
 		],

@@ -27,36 +27,54 @@ class Visitable {
 /// Name of the type a "type" token stands for (double is an alias of float).
 const typeName = token => token.canonical ?? token.lexeme;
 
-/// Native functions (written in JavaScript) brought by an #include.
+/// Native functions and constants (written in JavaScript) brought by an #include.
 /// A library file registers its header when it is loaded, see cmath.js:
 ///
-///     Library.register("cmath", { sqrt: [ { args: [ "float" ], ret: "float", run: Math.sqrt } ] });
+///     Library.register("cmath",
+///         { sqrt: [ { args: [ "float" ], ret: "float", run: Math.sqrt } ] },  // functions
+///         { PI: { type: "float", value: Math.PI } });                         // constants (optional)
 ///
-/// "#include <cmath>" then defines sqrt, both as std::sqrt and in the global
-/// namespace, for the TypeChecker and for the interpreter. Overloads are chosen
-/// with the same rules as the functions of the program (including the implicit
-/// conversions of the arguments).
+/// "#include <cmath>" then defines sqrt and PI, both as std::name and in the global
+/// namespace (constants: only global), for the TypeChecker and for the interpreter.
+/// Overloads are chosen with the same rules as the functions of the program
+/// (including the implicit conversions of the arguments).
+/// The header "" is always included, like the keywords of the language (nullptr).
 class Library {
-	static #headers = new Map(); // header -> { name: [ { args, ret, run } ] }
+	static #headers = new Map(); // header -> { functions: { name: [ { args, ret, run } ] }, constants: { name: { type, value } } }
 
-	static register(header, functions) { Library.#headers.set(header, functions); }
-	static has(header) { return Library.#headers.has(header); }
+	static register(header, functions = {}, constants = {}) {
+		const entry = Library.#headers.get(header) ?? { functions: {}, constants: {} };
+		Object.assign(entry.functions, functions);
+		Object.assign(entry.constants, constants);
+		Library.#headers.set(header, entry);
+	}
+	static has(header) { return header !== "" && Library.#headers.has(header); }
 
-	/// The header that declares a function: used to say what is missing in
+	/// The header that declares a function or a constant: used to say what is missing in
 	/// "'sqrt' requires #include <cmath>". Undefined if no header has it.
 	static headerOf(name) {
-		for (const [ header, functions ] of Library.#headers)
-			if (Object.hasOwn(functions, name)) return header;
+		for (const [ header, { functions, constants } ] of Library.#headers)
+			if (header !== "" && (Object.hasOwn(functions, name) || Object.hasOwn(constants, name))) return header;
+	}
+
+	static #entries(included) {
+		return [ "", ...included ].map(h => Library.#headers.get(h)).filter(Boolean);
 	}
 
 	/// All the overloads brought by the included headers: [ { name, args, ret, run } ].
 	static functions(included) {
 		const list = [];
-		for (const header of included) {
-			const functions = Library.#headers.get(header);
-			if (functions) for (const name in functions)
+		for (const { functions } of Library.#entries(included))
+			for (const name in functions)
 				for (const f of functions[name]) list.push({ name, ...f });
-		}
+		return list;
+	}
+
+	/// All the constants brought by the included headers: [ { name, type, value } ].
+	static constants(included) {
+		const list = [];
+		for (const { constants } of Library.#entries(included))
+			for (const name in constants) list.push({ name, ...constants[name] });
 		return list;
 	}
 }
@@ -158,6 +176,11 @@ class Environment {
 		for (const f of Library.functions(included))
 			for (const scope of [ global, std ])
 				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: f.run });
+		for (const c of Library.constants(included)) { // (a header may repeat a constant, like NULL)
+			const value = new Value(c.value, c.type);
+			value.isConst = true;
+			if (!global.values.has(c.name)) global.values.set(c.name, value);
+		}
 		Environment.global = Environment.current = global;
 	}
 	static open() { Environment.current = new Environment(Environment.current); }
@@ -462,6 +485,21 @@ class PostfixExpression extends Expression {
 		const value = new Value(PrefixExpression.step(l.value, this.operator.lexeme, this.valueType), this.valueType);
 		await PrefixExpression.store(this.left, value);
 		return result;
+	}
+}
+
+/// Explicit conversion: (int)x or int(x). Which conversions exist is checked by
+/// the TypeChecker, they are the same as the implicit ones (see Value.to).
+class Cast extends Expression {
+	constructor(type, expression, start, end) {
+		super(start, end);
+		this.type = type;
+		this.typeName = typeName(type);
+		this.expression = expression;
+	}
+	async execute() {
+		const value = await this.expression.evaluate();
+		return value.type === this.typeName ? value.clone() : value.to(this.typeName);
 	}
 }
 

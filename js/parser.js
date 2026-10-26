@@ -602,11 +602,23 @@ class Parser {
 			e = new InfixExpression(e, this.#previous(), this.#prefix());
 		return e;
 	}
-	// <prefix> := ( '!', '+' | '-' | '~' | "++" | "--") <prefix> | <call>
+	// <prefix> := ( '!', '+' | '-' | '~' | "++" | "--") <prefix> | '(' <type> ')' <prefix> | <call>
 	#prefix() {
 		if (this.#match("operator", [ '!', '+', '-', '~', "++", "--" ]))
 			return new PrefixExpression(this.#previous(), this.#prefix());
+		if (this.#isCast()) { // (int)x binds like a prefix operator: (int)x + 1 is ((int)x) + 1
+			const lpar = this.#advance(), type = this.#advance();
+			this.#advance(); // ')'
+			const e = this.#prefix();
+			return new Cast(type, e, lpar.position, e.end);
+		}
 		return this.#call();
+	}
+	// is there "( <type> )" ahead?
+	#isCast() {
+		const a = this.#peek(), b = this.tokens[this.current + 1], c = this.tokens[this.current + 2];
+		return !!(a && b && c) && a.type === "operator" && a.lexeme === "(" &&
+			b.type === "type" && c.type === "operator" && c.lexeme === ")";
 	}
 	// <call> := <postfix> ( '(' <arguments>? ')' )*
 	// <arguments> := <expression> ( ',' <expression> )*
@@ -642,12 +654,17 @@ class Parser {
 		}
 		return e;
 	}
-	// <primary> := '(' <expression> ')' | <postfix> | <number> | <string> | <char> | <bool>
+	// <primary> := '(' <expression> ')' | <type> '(' <expression> ')' | <postfix> | <number> | <string> | <char> | <bool>
 	#primary() {
 		if (this.#match("operator", "(")) {
 			const e = this.#expression();
 			this.#consume("operator", ")");
 			return e;
+		} else if (this.#check("type") && this.tokens[this.current + 1]?.lexeme === "(") {
+			const type = this.#advance(); // int(x)
+			this.#consume("operator", "(");
+			const e = this.#expression();
+			return new Cast(type, e, type.position, this.#consume("operator", ")").position + 1);
 		} else if (this.#check("number")) {
 			const n = this.#advance();
 			if (n.lexeme.includes('.')) return new Literal(n, "float");

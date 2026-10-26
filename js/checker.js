@@ -1,3 +1,4 @@
+
 // ==== Static type checker ====================================================
 //
 // Runs between the parser and the interpreter:
@@ -9,6 +10,7 @@
 // Types are strings: "int", "float", "char", "bool", "string", "void", and
 // arrays "int[]", "int[][]" (the sizes are only known when the program runs).
 // double is float.
+// Explicit casts, (int)x and int(x), allow the same conversions as the implicit ones.
 //
 // Implicit conversions follow C++:
 //  - bool, char, int and float convert to each other (assignments, initializers,
@@ -157,6 +159,8 @@ class SymbolScope {
 		for (const f of Library.functions(included))
 			for (const scope of [ global, std ])
 				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: true });
+		for (const c of Library.constants(included))
+			if (!global.values.has(c.name)) global.values.set(c.name, new VarInfo(c.type, true, true));
 		return global;
 	}
 
@@ -211,6 +215,8 @@ class SymbolScope {
 		if (owner) return owner.values.get(Environment.key(token));
 		if (!token.qualifiers && this.std.values.has(token.lexeme))
 			throw new CodeError(errors.NDS, token, [ token.lexeme, token.lexeme ]);
+		const header = token.qualifiers ? undefined : Library.headerOf(token.lexeme);
+		if (header) throw new CodeError(errors.NIH, token, [ token.lexeme, header ]); // NULL without its #include
 		throw new CodeError(errors.UVR, token, [ token.lexeme ]);
 	}
 
@@ -479,6 +485,15 @@ class TypeChecker {
 			this.#fail("UEX", this.#range(node));
 		node.isConstant = info.isConst && info.constant;
 		return node.valueType = info.type;
+	}
+
+	// (int)x and int(x): the same conversions as the implicit ones
+	visitCast(node) {
+		const t = node.expression.accept(this);
+		if (!TypeRules.canConvert(t, node.typeName))
+			this.#fail("CST", this.#range(node), [ t, node.typeName ]);
+		node.isConstant = node.expression.isConstant;
+		return node.valueType = node.typeName;
 	}
 
 	visitAssignment(node) {
