@@ -46,4 +46,6 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] Automatic Type Casting
 - [x] Random Number Generation
 - [x] Variable Scoping view (dashed box per scope in the debug view)
-- [ ] Step by step debug
+- [ ] Merge double scoped for loops in the debug view
+- [ ] Fix `char` arrays / matrices not showing `'`
+- [ ] Add `system("pause")` support

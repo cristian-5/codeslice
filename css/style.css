@@ -324,6 +324,10 @@ header {
 	user-select: none;
 }
 
+.variable::selection {
+	background-color: #0a004d64;
+}
+
 .white { color: #fff; }
 .black { color: #111; }
 .red { color: rgb(239, 71, 67); }

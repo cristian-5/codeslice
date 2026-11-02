@@ -138,12 +138,15 @@ function itemsOf(env) {
 }
 
 function itemsHTML(items) {
-	return items.map(item => item.items ? `
-		<div class="scope">
+	let result = "";
+	for (const item of items) {
+		if (item.items && item.items.length === 0) continue; // don't show empty scopes
+		result += item.items ? `<div class="scope">
 			<div class="scope-label">${escaped(item.label)}</div>
 			<div class="scope-content">${itemsHTML(item.items)}</div>
-		</div>` : variableHTML(item.id, item.data)
-	).join("");
+		</div>` : variableHTML(item.id, item.data);
+	}
+	return result;
 }
 
 function variableHTML(id, data) {
