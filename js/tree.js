@@ -182,8 +182,16 @@ class Environment {
 	static current = undefined;
 	static global = undefined;
 
-	static on_define = (id, data) => {};
-	static on_change = (id, data) => {};
+	// Hooks of the debug view. "env" is the Environment owning the variable and "id" its
+	// display name (qualified with the namespace, like "ns::x", for namespace members).
+	// Every environment that is not a namespace is a scope (a function call, a block, a
+	// loop...): it is announced with on_open / on_close, "label" says what it is.
+	static on_open = env => {};
+	static on_close = env => {};
+	static on_define = (env, id, data) => {};
+	static on_change = (env, id, data) => {};
+
+	static #count = 0; // gives every environment its own uid
 
 	/// "included" are the headers of the program: their native functions are defined.
 	static create(included = []) {
@@ -205,11 +213,31 @@ class Environment {
 		}
 		Environment.global = Environment.current = global;
 	}
-	static open() { Environment.current = new Environment(Environment.current); }
-	static close() { Environment.current = Environment.current.parent; }
 
-	/// The `name` is only given for namespaces (`""` for global).
-	constructor(parent, name) {
+	/// Runs `body` in a new scope (a block, a loop, a function call...) and closes it
+	/// afterwards. The scope sees the names of `parent`: the enclosing scope, or the
+	/// place where a function was declared. The scope is shown in the debug view while
+	/// it is open. If a CodeError stops the program it is left there, so that the state
+	/// at the moment of the error can be inspected.
+	static async scoped(label, body, parent = Environment.current) {
+		const outer = Environment.current;
+		const env = new Environment(parent, undefined, label);
+		Environment.current = env;
+		Environment.on_open(env);
+		let failed = false;
+		try { return await body(env); }
+		catch (e) { failed = e instanceof CodeError; throw e; }
+		finally {
+			Environment.current = outer;
+			if (!failed) Environment.on_close(env);
+		}
+	}
+
+	/// The `name` is only given for namespaces (`""` for global),
+	/// the `label` only for scopes (shown in the debug view).
+	constructor(parent, name, label = "") {
+		this.uid = Environment.#count++;
+		this.label = label;
 		this.parent = parent;
 		this.values = new Map();     // variables and functions
 		this.namespaces = new Map(); // nested namespaces
@@ -284,9 +312,8 @@ class Environment {
 		if (this.values.has(token.lexeme) || this.aliases.has(token.lexeme))
 			throw new CodeError(Language.main.errors.VRD, token, [ token.lexeme ]);
 		this.values.set(token.lexeme, value);
-		// globals and namespace members are shown in the debug view
-		if (this.isNamespace && value instanceof Value)
-			Environment.on_define(this.prefix + token.lexeme, value);
+		if (value instanceof Value)
+			Environment.on_define(this, this.prefix + token.lexeme, value);
 	}
 
 	// entry: { token, returnType, types, names, body, env } or { types, returnType, native }
@@ -312,7 +339,7 @@ class Environment {
 	assign(token, value) {
 		const owner = this.#resolve(token), key = Environment.key(token);
 		owner.values.set(key, value);
-		if (owner.isNamespace) Environment.on_change(owner.prefix + key, value);
+		Environment.on_change(owner, owner.prefix + key, value);
 	}
 
 }
@@ -546,27 +573,27 @@ class Call extends Expression {
 		if (fn.native) return new Value(fn.native(...args.map(a => a.value)), fn.returnType);
 		if (!fn.body) throw new CodeError(Language.main.errors.FND, at, [ fn.token.lexeme ]);
 		if (Call.depth >= MAX_CALL_DEPTH) throw new CodeError(Language.main.errors.MCD, at);
-		const caller = Environment.current;
-		const env = new Environment(fn.env); // sees the globals / its namespace, not the caller
-		fn.names.forEach((name, i) => env.define(name, args[i].clone()));
-		Environment.current = env;
-		Call.depth++;
-		let returned = null;
-		try {
-			// the body runs directly in the parameters' scope, like in C++
-			for (const s of fn.body.statements) await s.execute();
-		} catch (e) {
-			if (e instanceof ReturnException) returned = e;
-			else if (e instanceof BreakException || e instanceof ContinueException)
-				throw new CodeError(Language.main.errors.BNL, [ e.statement.start, e.statement.end ]);
-			else throw e;
-		} finally {
-			Call.depth--;
-			Environment.current = caller;
-		}
-		// (what a function may return was checked by the TypeChecker)
-		if (returned) return returned.value ? returned.value.clone() : new Value(undefined, "void");
-		return new Value(undefined, fn.returnType); // the end was reached without "return"
+		// the scope of the call sees the globals / its namespace, not the caller
+		const label = `${fn.env.prefix}${fn.token.lexeme}(${fn.types.join(", ")})`;
+		return await Environment.scoped(label, async env => {
+			fn.names.forEach((name, i) => env.define(name, args[i].clone()));
+			Call.depth++;
+			let returned = null;
+			try {
+				// the body runs directly in the parameters' scope, like in C++
+				for (const s of fn.body.statements) await s.execute();
+			} catch (e) {
+				if (e instanceof ReturnException) returned = e;
+				else if (e instanceof BreakException || e instanceof ContinueException)
+					throw new CodeError(Language.main.errors.BNL, [ e.statement.start, e.statement.end ]);
+				else throw e;
+			} finally {
+				Call.depth--;
+			}
+			// (what a function may return was checked by the TypeChecker)
+			if (returned) return returned.value ? returned.value.clone() : new Value(undefined, "void");
+			return new Value(undefined, fn.returnType); // the end was reached without "return"
+		}, fn.env);
 	}
 
 	async execute() {
@@ -659,10 +686,13 @@ class Block extends Statement {
 		this.rbrace = rbrace;
 		this.statements = statements;
 	}
+	// the label of the scope in the debug view: the statement owning the block
+	// ("if", "while"...) sets it, see its constructor
+	label = "{ }";
 	async execute() {
-		Environment.open();
-		try { for (const s of this.statements) await s.execute(); }
-		finally { Environment.close(); }
+		await Environment.scoped(this.label, async () => {
+			for (const s of this.statements) await s.execute();
+		});
 	}
 }
 
@@ -680,6 +710,8 @@ class If extends Statement {
 		this.condition = condition;
 		this.then = then;
 		this.els = els;
+		then.label = "if";
+		if (els) els.label = "else";
 	}
 	async execute() {
 		const condition = await this.condition.evaluate();
@@ -696,6 +728,7 @@ class While extends Statement {
 		super(keyword.position, block.end);
 		this.condition = condition;
 		this.block = block;
+		block.label = "while";
 	}
 	async execute() {
 		let condition = await this.condition.evaluate();
@@ -718,6 +751,7 @@ class DoWhile extends Statement {
 		super(keyword.position, condition.end);
 		this.block = block;
 		this.condition = condition;
+		block.label = "do";
 	}
 	async execute() {
 		let condition, count = 0;
@@ -741,11 +775,12 @@ class For extends Statement {
 		this.condition = condition;
 		this.increment = increment;
 		this.block = block;
+		block.label = "for body";
 	}
 	async execute() {
-		Environment.open();
-		try { await this.#loop(); }
-		finally { Environment.close(); }
+		// the scope of the loop holds the variable of the init (for (int i...)),
+		// the body is a scope inside of it
+		await Environment.scoped("for", () => this.#loop());
 	}
 	async #loop() {
 		if (this.init) await this.init.execute();
@@ -808,12 +843,13 @@ class Switch extends Statement {
 		}
 		if (start < 0) start = fallback;
 		if (start < 0) return;
-		Environment.open(); // the whole body is one scope
-		try {
-			for (let i = start; i < this.body.length; i++) await this.body[i].execute(); // falls through
-		} catch (e) {
-			if (!(e instanceof BreakException)) throw e;
-		} finally { Environment.close(); }
+		await Environment.scoped("switch", async () => { // the whole body is one scope
+			try {
+				for (let i = start; i < this.body.length; i++) await this.body[i].execute(); // falls through
+			} catch (e) {
+				if (!(e instanceof BreakException)) throw e;
+			}
+		});
 	}
 }
 

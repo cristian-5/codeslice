@@ -45,4 +45,5 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `switch` Statements
 - [x] Automatic Type Casting
 - [x] Random Number Generation
-- [ ] Variable Scoping, step by step debug
+- [x] Variable Scoping view (dashed box per scope in the debug view)
+- [ ] Step by step debug

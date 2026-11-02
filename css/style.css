@@ -212,13 +212,55 @@ header {
 	min-height: 0;
 }
 
+#view-box {
+	display: flex;
+	flex-direction: column;
+}
+
 #debug {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
 	justify-content: flex-start;
 	align-items: center;
+	align-content: flex-start;
 	padding: 40px;
+	flex: 1;
+	min-height: 0;
+	overflow: auto; /* nested scopes make the view grow */
+}
+
+/* A scope (function call, block, loop...) is a dashed box around its variables.
+   The global scope has no box. */
+.scope {
+	margin: 22px 10px 10px;
+	padding: 0 6px 6px;
+	min-width: 90px;
+	min-height: 40px;
+	border: 2px dashed rgba(255, 255, 255, 0.35);
+	border-radius: 12px;
+}
+
+/* In the flow (not absolute) so a scope is never narrower than its label; the negative
+   margin lifts it onto the border. */
+.scope-label {
+	width: max-content;
+	margin: -11px 0 4px 6px;
+	padding: 0 6px;
+	background-color: #262626; /* same as the panel: the label interrupts the border */
+	color: rgba(255, 255, 255, 0.55);
+	font-family: monospace;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 14px;
+	white-space: nowrap;
+}
+
+.scope-content {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: center;
 }
 
 .variable {

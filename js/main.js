@@ -42,12 +42,35 @@ async function compile(sender = null) {
 	if (sender === "client") vanillaToast.show(Language.main.noErrors, { duration: 1000, fadeDuration: 500 });
 }
 
-async function run() {
+/// Thrown inside a program that was stopped because the student pressed Run again.
+class RunStopped { }
+
+// Only one program can run at a time: the interpreter keeps its state in statics
+// (Environment.current, Call.depth...), so two programs running together corrupt each
+// other (a program waiting at `cin` that wakes up inside the new program's scope). So
+// pressing Run stops the program waiting at a `cin` (see Cin.prompt) and starts the new
+// one only when the old one has finished unwinding.
+let latestRun = 0;     // number of the last time Run was pressed
+let executingRun = 0;  // number of the run being executed
+let runQueue = Promise.resolve();
+
+function run() {
+	const number = ++latestRun;
+	return runQueue = runQueue.then(() => execute(number));
+}
+
+async function execute(number) {
+	if (number !== latestRun) return; // Run was pressed again in the meantime
+	executingRun = number;
 	await compile("server");
 	terminal.reset();
-	document.getElementById("debug").innerHTML = ""; // clear debug view
+	terminal.input_enabled = terminal.input_ready = false;
+	terminal.input_data = "";
+	Cin.input_queue.length = 0; // what was typed ahead for the previous run
+	resetDebugView();
 	if (!AST) return;
 	try { await AST.execute(); } catch (e) {
+		if (e instanceof RunStopped) return;
 		if (!(e instanceof CodeError)) {
 			console.error(e);
 			return;
@@ -61,59 +84,107 @@ async function run() {
 
 Cout.print = text => terminal.write(text);
 Cin.prompt = async () => {
+	const mine = executingRun;
 	terminal.input_enabled = true;
-	while (!terminal.input_ready) await wait(100);
+	while (!terminal.input_ready) {
+		await wait(100);
+		if (mine !== latestRun) throw new RunStopped(); // Run was pressed again
+	}
 	terminal.input_enabled = terminal.input_ready = false;
 	const data = terminal.input_data.trim();
 	terminal.input_data = "";
 	return data;
 };
 
-Environment.on_define = async (id, data) => {
+// ==== Debug view =============================================================
+//
+// Global variables (and namespace members) sit directly in the view. Every other
+// environment is a scope: it is drawn as a dashed box that holds its variables and,
+// nested inside, the scopes opened from it (a block inside a function, a loop body
+// inside the loop...). A function call is nested where the function was *declared*
+// (the globals), not in its caller, because that is all it can see.
+//
+// The interpreter reports what happens through the Environment hooks below. They only
+// update a small model: while the program runs the browser cannot paint anyway (it
+// gets control back when the program waits for `cin` and when it ends), so the model
+// is drawn once, then, instead of touching the DOM on every iteration of a loop.
+
+const debugModel = { items: [] };  // top level: variables and scopes, in order of creation
+const scopeNodes = new Map();      // env.uid -> scope { label, items, parent, keys }
+const variableItems = new Map();   // "uid/id" -> variable { id, data }
+let renderTimer = null;
+
+function resetDebugView() {
+	debugModel.items = [];
+	scopeNodes.clear();
+	variableItems.clear();
+	renderDebugView();
+}
+
+function scheduleRender() {
+	if (renderTimer === null) renderTimer = setTimeout(renderDebugView, 0);
+}
+
+function renderDebugView() {
+	clearTimeout(renderTimer);
+	renderTimer = null;
+	document.getElementById("debug").innerHTML = itemsHTML(debugModel.items);
+}
+
+/// The list a variable (or a scope) of `env` goes in.
+function itemsOf(env) {
+	const scope = env.isNamespace ? null : scopeNodes.get(env.uid);
+	return scope ? scope.items : debugModel.items;
+}
+
+function itemsHTML(items) {
+	return items.map(item => item.items ? `
+		<div class="scope">
+			<div class="scope-label">${escaped(item.label)}</div>
+			<div class="scope-content">${itemsHTML(item.items)}</div>
+		</div>` : variableHTML(item.id, item.data)
+	).join("");
+}
+
+function variableHTML(id, data) {
+	const cell = v => v === undefined ? '<span class="w-3">?</span>' :
+		escaped(new Value(v, data.base).toString());
 	switch (data.dimensions) {
 		case 1:
-			document.getElementById("debug").innerHTML += `
+			return `
 			<div class="variable ${data.base}"><table class="array" data-id="${id}">
 				<tr><th colspan="${data.sizes[0]}">
 					<span class="type">${data.base}</span> <b>${id}</b>[${data.sizes[0]}]</th>
 				</tr>
 				<tr>${Array.from({ length: data.sizes[0] }).map((_, i) => `
-					<td title="[${i}]">${data.value[i] === undefined ?
-						'<span class="w-3">?</span>' : data.value[i]}
-					</td>
+					<td title="[${i}]">${cell(data.value[i])}</td>
 				`).join('')}</tr>
 			</table></div>`;
-		return;
 		case 2:
-			document.getElementById("debug").innerHTML += `
+			return `
 			<div class="variable ${data.base}"><table class="array" data-id="${id}">
-				<tr><th colspan="${data.sizes[0]}">
+				<tr><th colspan="${data.sizes[1]}">
 					<span class="type">${data.base}</span>
 					<b>${id}</b>[${data.sizes[0]}][${data.sizes[1]}]</th>
 				</tr>
 				${Array.from({ length: data.sizes[0] }).map((_, i) => `
 					<tr>${Array.from({ length: data.sizes[1] }).map((_, j) => `
-						<td title="[${i}][${j}]">${data.value[i][j] === undefined ?
-							'<span class="w-3">?</span>' : data.value[i][j]}
-						</td>
+						<td title="[${i}][${j}]">${cell(data.value[i][j])}</td>
 					`).join('')}</tr>
 				`).join('')}
 			</table></div>`;
-		return;
 	}
-	if (data.isConst) return; // don't show constants in debug view
 	switch (data.type) {
 		case "int": case "float": case "bool":
-			document.getElementById("debug").innerHTML += `
+			return `
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
 					'<span class="w-3">?</span>' : data.value
 				}</td></tr>
 			</table></div>`;
-		break;
 		case "char":
-			document.getElementById("debug").innerHTML += `
+			return `
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>'${ data.value === undefined ?
@@ -121,48 +192,48 @@ Environment.on_define = async (id, data) => {
 				}'</td></tr>
 				<tr><td>${ data.value || "" }</td></tr>
 			</table></div>`;
-		break;
 		case "string":
-			document.getElementById("debug").innerHTML += `
+			return `
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>"${ data.value === undefined ?
 					'<span class="w-3">?</span>' : escaped(data.value)
 				}"</td></tr>
 			</table></div>`;
-		break;
 	}
+	return "";
+}
+
+Environment.on_open = env => {
+	const node = { label: env.label, items: [], parent: itemsOf(env.parent), keys: [] };
+	node.parent.push(node);
+	scopeNodes.set(env.uid, node);
+	scheduleRender();
 };
 
-Environment.on_change = async (id, data) => {
-	const to_string = d => new Value(d, data.base).toString();
-	const variable = document.querySelector(`table[data-id="${id}"]`);
-	if (!variable) return;
-	switch (data.dimensions) {
-		case 0:
-			variable.querySelector("td").innerHTML =
-				data.value === undefined ?
-				'<span class="w-3">?</span>' :
-				to_string(data.value);
-		return;
-		case 1: {
-			const tds = variable.querySelectorAll("td");
-			for (let i = 0; i < data.sizes[0]; i++)
-				tds[i].innerHTML =
-				data.value[i] === undefined ?
-				'<span class="w-3">?</span>' :
-				to_string(data.value[i]);
-		} return;
-		case 2: {
-			const tds = variable.querySelectorAll("td");
-			for (let i = 0; i < data.sizes[0]; i++)
-				for (let j = 0; j < data.sizes[1]; j++)
-					tds[i * data.sizes[1] + j].innerHTML =
-					data.value[i][j] === undefined ?
-					'<span class="w-3">?</span>' :
-					to_string(data.value[i][j]);
-		} return;
-	}
+Environment.on_close = env => {
+	const node = scopeNodes.get(env.uid);
+	if (!node) return;
+	node.parent.splice(node.parent.lastIndexOf(node), 1); // (it is almost always the last)
+	for (const key of node.keys) variableItems.delete(key);
+	scopeNodes.delete(env.uid);
+	scheduleRender();
+};
+
+Environment.on_define = (env, id, data) => {
+	if (data.isConst && data.dimensions === 0) return; // don't show constants in debug view
+	const item = { id, data }, key = `${env.uid}/${id}`;
+	itemsOf(env).push(item);
+	variableItems.set(key, item);
+	scopeNodes.get(env.uid)?.keys.push(key);
+	scheduleRender();
+};
+
+Environment.on_change = (env, id, data) => {
+	const item = variableItems.get(`${env.uid}/${id}`);
+	if (!item) return;
+	item.data = data;
+	scheduleRender();
 };
 
 function madeWithLove() {
