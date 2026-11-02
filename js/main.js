@@ -147,7 +147,7 @@ function itemsHTML(items) {
 }
 
 function variableHTML(id, data) {
-	const cell = v => v === undefined ? '<span class="w-3">?</span>' :
+	const cell = v => v === undefined ? '<span class="symbol">?</span>' :
 		escaped(new Value(v, data.base).toString());
 	switch (data.dimensions) {
 		case 1:
@@ -180,25 +180,25 @@ function variableHTML(id, data) {
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
 				<tr><td>${ data.value === undefined ?
-					'<span class="w-3">?</span>' : data.value
+					'<span class="symbol">?</span>' : data.value
 				}</td></tr>
 			</table></div>`;
 		case "char":
 			return `
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
-				<tr><td>'${ data.value === undefined ?
-					'<span class="w-3">?</span>' : escaped(String.fromCharCode(data.value))
-				}'</td></tr>
+				<tr><td><span class="symbol">'</span>${ data.value === undefined ?
+					'<span class="symbol">?</span>' : escaped(String.fromCharCode(data.value))
+				}<span class="symbol">'</span></td></tr>
 				<tr><td>${ data.value || "" }</td></tr>
 			</table></div>`;
 		case "string":
 			return `
 			<div class="variable ${data.type}"><table data-id="${id}">
 				<tr><th><span class="type">${data.base}</span> <b>${id}</b></th></tr>
-				<tr><td>"${ data.value === undefined ?
-					'<span class="w-3">?</span>' : escaped(data.value)
-				}"</td></tr>
+				<tr><td><span class="symbol">'</span>${ data.value === undefined ?
+					'<span class="symbol">?</span>' : escaped(data.value)
+				}<span class="symbol">'</span></td></tr>
 			</table></div>`;
 	}
 	return "";

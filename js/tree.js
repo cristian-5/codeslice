@@ -141,9 +141,9 @@ class Value {
 		if (this.type === type) return this;
 		let v = this.value;
 		if (v !== undefined) switch (type) {
-			case "bool":  v = v !== 0; break;
-			case "int":   v = Math.trunc(Number(v)); break;
-			case "char":  v = Math.trunc(Number(v)) & 0xFF; break;
+			case  "bool": v = v !== 0; break;
+			case   "int": v = Math.trunc(Number(v)); break;
+			case  "char": v = Math.trunc(Number(v)) & 0xFF; break;
 			case "float": v = Number(v); break;
 		}
 		return new Value(v, type);

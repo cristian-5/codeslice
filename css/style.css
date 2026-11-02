@@ -230,8 +230,6 @@ header {
 	overflow: auto; /* nested scopes make the view grow */
 }
 
-/* A scope (function call, block, loop...) is a dashed box around its variables.
-   The global scope has no box. */
 .scope {
 	margin: 22px 10px 10px;
 	padding: 0 6px 6px;
@@ -239,10 +237,9 @@ header {
 	min-height: 40px;
 	border: 2px dashed rgba(255, 255, 255, 0.35);
 	border-radius: 12px;
+	user-select: none;
 }
 
-/* In the flow (not absolute) so a scope is never narrower than its label; the negative
-   margin lifts it onto the border. */
 .scope-label {
 	width: max-content;
 	margin: -11px 0 4px 6px;
@@ -254,6 +251,7 @@ header {
 	font-weight: 600;
 	line-height: 14px;
 	white-space: nowrap;
+	user-select: none;
 }
 
 .scope-content {
@@ -306,6 +304,7 @@ header {
 .variable td {
 	color: #fff;
 	text-align: center;
+	user-select: text;
 }
 
 .variable th b {
@@ -320,15 +319,10 @@ header {
 	border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.w-1 { color: rgba(255, 255, 255, 0.1); }
-.w-2 { color: rgba(255, 255, 255, 0.2); }
-.w-3 { color: rgba(255, 255, 255, 0.3); }
-.w-4 { color: rgba(255, 255, 255, 0.4); }
-.w-5 { color: rgba(255, 255, 255, 0.5); }
-.w-6 { color: rgba(255, 255, 255, 0.6); }
-.w-7 { color: rgba(255, 255, 255, 0.7); }
-.w-8 { color: rgba(255, 255, 255, 0.8); }
-.w-9 { color: rgba(255, 255, 255, 0.9); }
+.variable .symbol {
+	color: rgba(255, 255, 255, 0.3);
+	user-select: none;
+}
 
 .white { color: #fff; }
 .black { color: #111; }
