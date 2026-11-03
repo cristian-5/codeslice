@@ -157,8 +157,8 @@ class SymbolScope {
 		std.values.set("cin",  new StreamInfo());
 		global.namespaces.set("std", std);
 		for (const f of Library.functions(included))
-			for (const scope of [ global, std ])
-				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: true });
+			for (const scope of f.stdOnly ? [ std ] : [ global, std ])
+				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: true, refs: f.refs });
 		for (const c of Library.constants(included))
 			if (!global.values.has(c.name)) global.values.set(c.name, new VarInfo(c.type, true, true));
 		return global;
@@ -458,7 +458,10 @@ class TypeChecker {
 
 	visitCout(node) {
 		if (!node.qualified) this.#scope.require(node.c);
-		for (const e of node.expressions) e.accept(this);
+		for (const e of node.expressions) {
+			const t = e.accept(this);
+			if (t === "istream") this.#fail("CST", this.#range(e), [ t, "string" ]);
+		}
 	}
 
 	visitCin(node) {
@@ -473,6 +476,39 @@ class TypeChecker {
 	}
 
 	// ---- Expressions ----------------------------------------------------------
+
+	// cin as a value (getline(cin, s)): its type is "istream"
+	visitStreamRef(node) {
+		if (!node.qualified) this.#scope.require(node.c);
+		return node.valueType = "istream";
+	}
+
+	// cin.get() -> int, cin.get(c) -> bool, cin.ignore(n, delim) -> void
+	visitStreamCall(node) {
+		if (!node.qualified) this.#scope.require(node.c);
+		const name = node.member.lexeme, types = node.args.map(a => a.accept(this));
+		const wrong = () => this.#fail("FNF", this.#range(node), [ `cin.${name}` ]);
+		switch (name) {
+			case "get": {
+				if (node.args.length === 0) return node.valueType = "int";
+				if (node.args.length > 1 || types[0] !== "char") wrong();
+				const target = node.args[0]; // cin.get(c) writes the character in c
+				if (!(target instanceof Identifier || target instanceof Subscript))
+					this.#fail("IAT", this.#range(target));
+				if (target instanceof Identifier) this.#assertMutable(target);
+				return node.valueType = "bool";
+			}
+			case "ignore":
+				if (node.args.length > 2) wrong();
+				types.forEach((t, i) => {
+					if (!TypeRules.isArithmetic(t))
+						this.#fail("CST", this.#range(node.args[i]), [ t, i === 0 ? "int" : "char" ]);
+					this.#coerce(node.args[i], "int");
+				});
+				return node.valueType = "void";
+		}
+		this.#fail("UMF", node.member, [ name ]);
+	}
 
 	visitLiteral(node) {
 		node.isConstant = true;
@@ -574,6 +610,8 @@ class TypeChecker {
 			this.#fail("NAF", token, [ token.lexeme ]);
 		const types = node.args.map(a => a.accept(this));
 		if (symbol === undefined) {
+			if (!token.qualifiers && this.#scope.std.values.has(name)) // getline without std::
+				this.#fail("NDS", token, [ name, name ]);
 			const header = Library.headerOf(name);
 			if (header) this.#fail("NIH", token, [ name, header ]);
 			this.#fail("UFN", token, [ name ]);
@@ -594,6 +632,12 @@ class TypeChecker {
 		if (best.length !== 1) this.#fail("AMB", this.#range(node), [ name ]);
 		node.signature = best[0].types;
 		node.args.forEach((arg, i) => this.#coerce(arg, best[0].types[i]));
+		for (const i of best[0].refs ?? []) { // an argument the function writes to must be a variable
+			const target = node.args[i];
+			if (!(target instanceof Identifier || target instanceof Subscript))
+				this.#fail("IAT", this.#range(target));
+			if (target instanceof Identifier) this.#assertMutable(target);
+		}
 		return node.valueType = best[0].returnType;
 	}
 

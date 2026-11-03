@@ -65,7 +65,8 @@ class Language {
 				CSC: "Case label must be a constant expression",
 				DCV: "Duplicate case value %",
 				MDF: "Multiple default labels in one switch",
-				CSO: "case and default can only be used inside a switch"
+				CSO: "case and default can only be used inside a switch",
+				UMF: "'cin' has no member named '%'"
 			},
 			saveMessage: "🍰 Code SL/CE automatically saves your changes!",
 			loveMessage: "Made with ❤️ by <b>Prof. Cristian Antonuccio</b>",
@@ -136,7 +137,8 @@ class Language {
 				CSC: "L'etichetta case deve essere un'espressione costante",
 				DCV: "Valore case duplicato %",
 				MDF: "Più etichette default nello stesso switch",
-				CSO: "case e default possono essere usati solo dentro uno switch"
+				CSO: "case e default possono essere usati solo dentro uno switch",
+				UMF: "'cin' non ha un membro chiamato '%'"
 			},
 			saveMessage: "🍰 Code SL/CE salva automaticamente le modifiche!",
 			loveMessage: "Fatto con ❤️ dal <b>Prof. Cristian Antonuccio</b>",

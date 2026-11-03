@@ -72,7 +72,7 @@ class Parser {
 				case '%': case '=': case '(': case ')':
 				case '{': case '}': case ';': case ',':
 				case '<': case '>': case '!': case ':':
-				case '[': case ']': case '&': case '|':
+				case '[': case ']': case '&': case '|': case '.':
 					tokens.push({ lexeme: code[i], type: "operator", position: i });
 				break;
 				case '/':
@@ -357,6 +357,28 @@ class Parser {
 		return !!(a && b && c) && a.type === "identifier" && a.lexeme === "std" &&
 			b.lexeme === "::" && c.type === "keyword" && c.lexeme === keyword;
 	}
+	// is the token `offset` places ahead a '.'? (cin.get(), std::cin.ignore())
+	#isMember(offset) {
+		const t = this.tokens[this.current + offset];
+		return !!t && t.type === "operator" && t.lexeme === ".";
+	}
+	// <stream> := [ "std" "::" ] "cin" [ '.' <identifier> '(' [ <arguments> ] ')' ]
+	// Alone it is the stream itself (the first argument of getline), with a member it is
+	// a call: cin.get(), cin.get(c), cin.ignore(), cin.ignore(n), cin.ignore(n, delim)
+	#stream() {
+		const start = this.#peek().position, qualified = this.#isStd("cin");
+		if (qualified) { this.#advance(); this.#advance(); }
+		const c = this.#consume("keyword", "cin");
+		if (!this.#match("operator", ".")) return new StreamRef(c, qualified, start);
+		const member = this.#consume("identifier");
+		this.#consume("operator", "(");
+		const args = [];
+		if (!this.#check("operator", ")")) {
+			do args.push(this.#expression());
+			while (this.#match("operator", ","));
+		}
+		return new StreamCall(c, qualified, start, member, args, this.#consume("operator", ")"));
+	}
 	// a::b::c becomes a single token with "qualifiers" [a, b] and "member" c
 	#qualify(parts) {
 		if (parts.length === 1) return parts[0];
@@ -418,9 +440,9 @@ class Parser {
 			this.#consume("operator", ";");
 		}
 		else if (this.#check("keyword", "cout"))  e = this.#cout(false);
-		else if (this.#check("keyword", "cin"))   e = this.#cin(false);
+		else if (this.#check("keyword", "cin") && !this.#isMember(1)) e = this.#cin(false);
 		else if (this.#isStd("cout")) { this.#advance(); this.#advance(); e = this.#cout(true); }
-		else if (this.#isStd("cin"))  { this.#advance(); this.#advance(); e = this.#cin(true); }
+		else if (this.#isStd("cin") && !this.#isMember(3)) { this.#advance(); this.#advance(); e = this.#cin(true); }
 		else if (this.#check("keyword", "return")) e = this.#return();
 		else if (this.#check("keyword", "using"))  e = this.#using();
 		else if (this.#check("keyword", "if"))    e = this.#if();
@@ -656,6 +678,7 @@ class Parser {
 	}
 	// <primary> := '(' <expression> ')' | <type> '(' <expression> ')' | <postfix> | <number> | <string> | <char> | <bool>
 	#primary() {
+		if (this.#check("keyword", "cin") || this.#isStd("cin")) return this.#stream();
 		if (this.#match("operator", "(")) {
 			const e = this.#expression();
 			this.#consume("operator", ")");

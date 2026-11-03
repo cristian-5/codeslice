@@ -66,7 +66,7 @@ async function execute(number) {
 	terminal.reset();
 	terminal.input_enabled = terminal.input_ready = false;
 	terminal.input_data = "";
-	Cin.input_queue.length = 0; // what was typed ahead for the previous run
+	Cin.reset(); // what was typed but not read by the previous run
 	resetDebugView();
 	if (!AST) return;
 	try { await AST.execute(); } catch (e) {
@@ -91,7 +91,7 @@ Cin.prompt = async () => {
 		if (mine !== latestRun) throw new RunStopped(); // Run was pressed again
 	}
 	terminal.input_enabled = terminal.input_ready = false;
-	const data = terminal.input_data.trim();
+	const data = terminal.input_data; // as typed: cin, getline... decide what the spaces mean
 	terminal.input_data = "";
 	return data;
 };

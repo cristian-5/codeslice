@@ -49,3 +49,7 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] Merge double scoped for loops in the debug view
 - [x] Fix `char` arrays / matrices not showing `'`
 - [x] `system("pause")`, `system("cls")`
+- [x] `cin.get()`, `cin.get(c)` (e.g. "press Enter to continue")
+- [x] `getline(cin, s)`, `getline(cin, s, delim)`
+- [x] `cin.ignore()`, `cin.ignore(n)`, `cin.ignore(n, delim)`
+- [x] Input behaves like the standard input of C++: `cin >> s` reads one word and leaves the `'\n'` in the buffer

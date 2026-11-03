@@ -39,6 +39,10 @@ const typeName = token => token.canonical ?? token.lexeme;
 /// Overloads are chosen with the same rules as the functions of the program
 /// (including the implicit conversions of the arguments).
 /// The header "" is always included, like the keywords of the language (nullptr).
+/// A function may also have:
+///   stdOnly: true   it exists only as std::name (or with "using namespace std"), like getline
+///   refs: [ 1 ]     the arguments it writes to (by reference, like the string of getline): `run`
+///                   gets an async setter `value => ...` instead of the value of those arguments
 class Library {
 	static #headers = new Map(); // header -> { functions: { name: [ { args, ret, run } ] }, constants: { name: { type, value } } }
 
@@ -207,8 +211,8 @@ class Environment {
 		std.values.set("cin",  new StreamSymbol());
 		global.namespaces.set("std", std);
 		for (const f of Library.functions(included))
-			for (const scope of [ global, std ])
-				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: f.run });
+			for (const scope of f.stdOnly ? [ std ] : [ global, std ])
+				scope.defineFunction({ token: { lexeme: f.name, position: 0 }, returnType: f.ret, types: f.args, native: f.run, refs: f.refs });
 		for (const c of Library.constants(included)) { // (a header may repeat a constant, like NULL)
 			const value = new Value(c.value, c.type);
 			value.isConst = true;
@@ -603,8 +607,14 @@ class Call extends Expression {
 
 	async execute() {
 		const token = this.callee.name, at = [ this.start, this.end ];
-		const args = await evalAll(this.args); // already converted to the parameter types
 		const fn = Environment.current.lookup(token).find(this.signature);
+		const refs = (fn.native && fn.refs) || [];
+		const args = []; // already converted to the parameter types
+		for (let i = 0; i < this.args.length; i++) {
+			const arg = this.args[i];
+			// an argument the function writes to is not read (it may be uninitialized)
+			args.push(refs.includes(i) ? new Value(value => Cin.store(arg, value), "ref") : await arg.evaluate());
+		}
 		if (fn.native) args.forEach((a, i) => {
 			if (a.value === undefined)
 				throw new CodeError(Language.main.errors.INI, [ this.args[i].start, this.args[i].end ]);
@@ -897,9 +907,148 @@ class Cout extends Statement {
 	}
 }
 
+/// The input stream `cin` used as a value. Only getline takes it: getline(cin, s).
+class StreamRef extends Expression {
+	constructor(token, qualified, start) {
+		super(start, token.position + token.lexeme.length);
+		this.c = token;
+		this.qualified = qualified; // written as std::cin
+	}
+	async execute() { return new Value(Cin, "istream"); }
+}
+
+/// cin.get(), cin.get(c), cin.ignore(), cin.ignore(n), cin.ignore(n, delim)
+class StreamCall extends Expression {
+	constructor(token, qualified, start, member, args, rpar) {
+		super(start, rpar.position + 1);
+		this.c = token;
+		this.qualified = qualified;
+		this.member = member;
+		this.args = args;
+	}
+	async execute() {
+		switch (this.member.lexeme) {
+			case "get": {
+				if (this.args.length === 0) // like C++ it returns an int: the code of the character
+					return new Value((await Cin.get()).charCodeAt(0), "int");
+				await Cin.store(this.args[0], (await Cin.get()).charCodeAt(0));
+				return new Value(true, "bool");
+			}
+			case "ignore": {
+				const [ count, delim ] = await evalAll(this.args);
+				for (const [ i, v ] of [ count, delim ].entries())
+					if (v && v.value === undefined)
+						throw new CodeError(Language.main.errors.INI, [ this.args[i].start, this.args[i].end ]);
+				await Cin.ignore(count ? count.value : 1, delim ? String.fromCharCode(delim.value) : null);
+				return new Value(undefined, "void");
+			}
+		}
+	}
+}
+
+/// `cin >> a >> b;`
+///
+/// Input works like the standard input of a C++ program. What the student types is kept
+/// in a buffer (one whole line at a time, with its '\n', as a terminal does), and every
+/// operation takes what it needs from the front of the buffer:
+///
+///   cin >> x        skips the whitespace, reads one value, leaves the rest (the '\n' too!)
+///   getline(cin, s) reads up to the '\n', and throws the '\n' away
+///   cin.get()       takes one character, whatever it is (a space, a '\n'...)
+///   cin.ignore()    throws characters away
+///
+/// A new line is asked to the student only when the buffer is empty. This is why
+/// `cin >> n; getline(cin, s);` gives an empty s: the '\n' typed after n is still there.
 class Cin extends Statement {
+
+	/// Asks the student for one line (without the '\n'), see main.js.
 	static prompt = async () => prompt();
-	static input_queue = [];
+
+	/// Typed but not consumed yet.
+	static buffer = "";
+
+	static reset() { Cin.buffer = ""; }
+
+	/// Reads one more line, when the program needs input and the buffer is empty.
+	static async fill() { Cin.buffer += (await Cin.prompt()) + "\n"; }
+
+	/// The first character of the buffer (it asks for a line if needed), removed.
+	static async get() {
+		if (Cin.buffer.length === 0) await Cin.fill();
+		const c = Cin.buffer[0];
+		Cin.buffer = Cin.buffer.slice(1);
+		return c;
+	}
+
+	/// cin.ignore(count, delim): removes up to `count` characters, stopping after `delim`.
+	static async ignore(count = 1, delim = null) {
+		for (let i = 0; i < count; i++)
+			if ((await Cin.get()) === delim) break;
+	}
+
+	/// getline(cin, s, delim): everything up to `delim` (which is removed, not returned).
+	static async line(delim = "\n") {
+		let text = "";
+		while (true) {
+			if (Cin.buffer.length === 0) await Cin.fill();
+			const i = Cin.buffer.indexOf(delim);
+			if (i >= 0) {
+				text += Cin.buffer.slice(0, i);
+				Cin.buffer = Cin.buffer.slice(i + 1);
+				return text;
+			}
+			text += Cin.buffer; // no delim yet: this whole line belongs to the string
+			Cin.buffer = "";
+		}
+	}
+
+	/// Removes the whitespace in front of the buffer (asking for more lines if it is all blank).
+	static async skipSpace() {
+		while (true) {
+			Cin.buffer = Cin.buffer.replace(/^[ \t\n\v\f\r]+/, "");
+			if (Cin.buffer.length > 0) return;
+			await Cin.fill();
+		}
+	}
+
+	/// `cin >> variable` of that type: the JavaScript value read, or a CodeError.
+	static async read(type, at) {
+		await Cin.skipSpace();
+		const take = text => { Cin.buffer = Cin.buffer.slice(text.length); return text; };
+		const invalid = () => new CodeError(Language.main.errors.CII, at, [ type ]);
+		const word = /^[^ \t\n\v\f\r]+/;
+		let m;
+		switch (type) {
+			case "string": return take(Cin.buffer.match(word)[0]); // one word, like C++
+			case "char": return take(Cin.buffer[0]).charCodeAt(0);
+			case "int":
+				// like C++ it reads the digits and stops there: 12abc is 12, then abc
+				if (!(m = Cin.buffer.match(/^[+-]?[0-9]+/))) throw invalid();
+				return parseInt(take(m[0]), 10);
+			case "float":
+				if (!(m = Cin.buffer.match(/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/))) throw invalid();
+				return parseFloat(take(m[0]));
+			case "bool": {
+				const w = take(Cin.buffer.match(word)[0]);
+				if (w === "true" || w == 1) return true;
+				if (w === "false" || w == 0) return false;
+				throw invalid();
+			}
+		}
+	}
+
+	/// Stores a JavaScript value in a variable or array element, and tells the debug view.
+	static async store(target, value) {
+		if (target instanceof Identifier) {
+			const variable = Environment.current.get(target.name);
+			variable.value = value;
+			Environment.current.assign(target.name, variable); // notifies the debug view
+		} else {
+			const name = await target.execute(new Value(value, target.valueType)); // Subscript
+			Environment.current.assign(name, Environment.current.get(name));
+		}
+	}
+
 	constructor(c, expressions, qualified) {
 		super(expressions[0].start, expressions.top().end);
 		this.expressions = expressions;
@@ -908,41 +1057,8 @@ class Cin extends Statement {
 	}
 	async execute() {
 		for (const e of this.expressions) {
-			let value = Cin.input_queue.shift() || await Cin.prompt(), id;
-			if (e instanceof Identifier) id = Environment.current.get(e.name);
-			else id = await e.execute(); // subscript
-			if (Cin.input_queue.length === 0 && id.base !== "string") {
-				const chunks = value.split(/[\s\n\r]+/gm);
-				if (chunks.length > 1) {
-					value = chunks.shift();
-					Cin.input_queue.push(...chunks);
-				} else value = chunks[0];
-			}
-			switch (id.base) {
-				case "int":
-					id.value = parseInt(value);
-					if (isNaN(id.value)) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
-				break;
-				case "float":
-					id.value = parseFloat(value);
-					if (isNaN(id.value)) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
-				break;
-				case "char":
-					id.value = value.charCodeAt(0);
-					if (value.length !== 1) throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
-				break;
-				case "string": id.value = value; break;
-				case "bool":
-					if (value === "true" || value == 1) id.value = true;
-					else if (value === "false" || value == 0) id.value = false;
-					else throw new CodeError(Language.main.errors.CII, [ e.start, e.end ], [ id.type ]);
-				break;
-			}
-			if (e instanceof Subscript) {
-				id = await e.execute(id);
-				const current = Environment.current.get(id);
-				Environment.current.assign(id, current);
-			} else Environment.current.assign(e.name, id); // just to notify change
+			const value = await Cin.read(e.valueType, [ e.start, e.end ]);
+			await Cin.store(e, value);
 		}
 	}
 }

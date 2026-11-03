@@ -37,6 +37,7 @@
 	<!-- LIBRARIES -->
 
 	<script type="text/javascript" src="js/lib/cstdlib.js"></script>
+	<script type="text/javascript" src="js/lib/string.js"></script>
 	<script type="text/javascript" src="js/lib/cmath.js"></script>
 	<script type="text/javascript" src="js/lib/ctime.js"></script>
 
@@ -121,11 +122,11 @@
 			if (!window.terminal.input_enabled) return;
 			switch (e.key) {
 				case "\r": case "\n":
+					// Enter always sends the line, even an empty one: getline and cin.get() need it.
+					// (cin >> x just asks again, as it skips the blank lines)
 					window.terminal.write('\n');
-					if (window.terminal.input_data.length > 0) {
-						window.terminal.input_ready = true;
-						window.terminal.input_enabled = false;
-					}
+					window.terminal.input_ready = true;
+					window.terminal.input_enabled = false;
 				break;
 				case "\b": case "\x7f": // backspace
 					if (window.terminal.input_data.length === 0) return;
