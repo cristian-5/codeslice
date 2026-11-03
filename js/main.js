@@ -294,3 +294,18 @@ function escaped(s) {
 		.replace(/\r/g, "\\r")
 		.replace(/\t/g, "\\t");
 }
+
+function save() {
+	let name = prompt(Language.main.saveFile, Language.main.saveName);
+	if (!name.endsWith(".cpp")) name += ".cpp";
+	const code = editor.getValue();
+	const blob = new Blob([code], { type: "text/plain" });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = name;
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
+}
