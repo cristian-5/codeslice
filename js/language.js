@@ -69,6 +69,8 @@ class Language {
 			},
 			saveMessage: "🍰 Code SL/CE automatically saves your changes!",
 			loveMessage: "Made with ❤️ by <b>Prof. Cristian Antonuccio</b>",
+			pressAnyKey: "Press any key to continue . . . ",
+			commandNotRecognized: "'%' is not recognized as an internal or external command, operable program or batch file.",
 			noErrors: "✅ The code is valid, no errors found!"
 		},
 		"IT": {
@@ -138,6 +140,8 @@ class Language {
 			},
 			saveMessage: "🍰 Code SL/CE salva automaticamente le modifiche!",
 			loveMessage: "Fatto con ❤️ dal <b>Prof. Cristian Antonuccio</b>",
+			pressAnyKey: "Premi un tasto per continuare . . . ",
+			commandNotRecognized: "'%' non è riconosciuto come comando interno o esterno, programma o file batch.",
 			noErrors: "✅ Nessun errore trovato, il codice è valido!"
 		},
 	};

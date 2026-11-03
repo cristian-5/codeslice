@@ -160,6 +160,9 @@ class ReturnException {
 	}
 }
 
+/// Runs the commands of system("..."), see main.js (it needs the terminal).
+class System { static run = async command => 1; }
+
 /// Streams like cout and cin are represented by this class.
 /// It is not a Value, so it cannot be used as a variable or function argument.
 class StreamSymbol { }
@@ -219,9 +222,10 @@ class Environment {
 	/// place where a function was declared. The scope is shown in the debug view while
 	/// it is open. If a CodeError stops the program it is left there, so that the state
 	/// at the moment of the error can be inspected.
-	static async scoped(label, body, parent = Environment.current) {
+	static async scoped(label, body, parent = Environment.current, merged = false) {
 		const outer = Environment.current;
 		const env = new Environment(parent, undefined, label);
+		env.merged = merged; // the debug view draws its variables inside the parent's box
 		Environment.current = env;
 		Environment.on_open(env);
 		let failed = false;
@@ -238,6 +242,7 @@ class Environment {
 	constructor(parent, name, label = "") {
 		this.uid = Environment.#count++;
 		this.label = label;
+		this.merged = false;
 		this.parent = parent;
 		this.values = new Map();     // variables and functions
 		this.namespaces = new Map(); // nested namespaces
@@ -570,7 +575,7 @@ class Call extends Expression {
 	/// Runs a function, parameters are passed by value.
 	/// "at" is the [ start, end ] range used to report errors.
 	static async invoke(fn, args, at) {
-		if (fn.native) return new Value(fn.native(...args.map(a => a.value)), fn.returnType);
+		if (fn.native) return new Value(await fn.native(...args.map(a => a.value)), fn.returnType); // (a native may be async, like system)
 		if (!fn.body) throw new CodeError(Language.main.errors.FND, at, [ fn.token.lexeme ]);
 		if (Call.depth >= MAX_CALL_DEPTH) throw new CodeError(Language.main.errors.MCD, at);
 		// the scope of the call sees the globals / its namespace, not the caller
@@ -689,10 +694,11 @@ class Block extends Statement {
 	// the label of the scope in the debug view: the statement owning the block
 	// ("if", "while"...) sets it, see its constructor
 	label = "{ }";
+	merged = false; // true for the body of a "for": shown as part of the loop's scope
 	async execute() {
 		await Environment.scoped(this.label, async () => {
 			for (const s of this.statements) await s.execute();
-		});
+		}, Environment.current, this.merged);
 	}
 }
 
@@ -775,11 +781,13 @@ class For extends Statement {
 		this.condition = condition;
 		this.increment = increment;
 		this.block = block;
-		block.label = "for body";
+		block.label = "for";
+		block.merged = true; // one box in the debug view for the loop and its body
 	}
 	async execute() {
-		// the scope of the loop holds the variable of the init (for (int i...)),
-		// the body is a scope inside of it
+		// the scope of the loop holds the variable of the init (for (int i...)).
+		// The body is still its own scope (it may shadow `i`, like in C++), but the
+		// debug view draws it inside the loop's box (see block.merged)
 		await Environment.scoped("for", () => this.#loop());
 	}
 	async #loop() {

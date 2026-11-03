@@ -4,7 +4,9 @@
 Library.register("cstdlib", {
 	abs:  [ { args: [ "int" ], ret: "int", run: Math.abs } ],
 	srand: [ { args: [ "int" ], ret: "void", run: seed => pcg32_srandom(BigInt(seed), 0x853c49e6748fea9bn) } ],
-	rand: [ { args: [], ret: "int", run: () => pcg32_next() } ]
+	rand: [ { args: [], ret: "int", run: () => pcg32_next() } ],
+	// system("pause") and system("cls") only, see System in main.js
+	system: [ { args: [ "string" ], ret: "int", run: command => System.run(command) } ]
 }, {
 	NULL: { type: "int", value: 0 },
 });

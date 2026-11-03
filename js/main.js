@@ -96,6 +96,29 @@ Cin.prompt = async () => {
 	return data;
 };
 
+// system("..."): only the commands of a Windows console that make sense here.
+System.run = async command => {
+	switch (command.trim().toLowerCase()) {
+		case "cls": case "clear":
+			terminal.reset();
+			return 0;
+		case "pause": {
+			const mine = executingRun;
+			Cout.print(Language.main.pressAnyKey);
+			terminal.key_wait = true;
+			while (terminal.key_wait) {
+				await wait(50);
+				if (mine !== latestRun) { terminal.key_wait = false; throw new RunStopped(); }
+			}
+			Cout.print("\n");
+			return 0;
+		}
+		default:
+			Cout.print(Language.main.commandNotRecognized.replace("%", command) + "\n");
+		return 1; // unknown command: the shell would fail
+	}
+};
+
 // ==== Debug view =============================================================
 //
 // Global variables (and namespace members) sit directly in the view. Every other
@@ -112,11 +135,13 @@ Cin.prompt = async () => {
 const debugModel = { items: [] };  // top level: variables and scopes, in order of creation
 const scopeNodes = new Map();      // env.uid -> scope { label, items, parent, keys }
 const variableItems = new Map();   // "uid/id" -> variable { id, data }
+const mergedItems = new Map();    // merged env.uid -> [ { item, key } ] it put in its parent's box
 let renderTimer = null;
 
 function resetDebugView() {
 	debugModel.items = [];
 	scopeNodes.clear();
+	mergedItems.clear();
 	variableItems.clear();
 	renderDebugView();
 }
@@ -150,7 +175,9 @@ function itemsHTML(items) {
 }
 
 function variableHTML(id, data) {
+	const quote = '<span class="symbol">\'</span>';
 	const cell = v => v === undefined ? '<span class="symbol">?</span>' :
+		data.base === "char" ? quote + escaped(new Value(v, "char").toString()) + quote :
 		escaped(new Value(v, data.base).toString());
 	switch (data.dimensions) {
 		case 1:
@@ -208,6 +235,10 @@ function variableHTML(id, data) {
 }
 
 Environment.on_open = env => {
+	if (env.merged) { // not a box of its own: it shares the box of its parent (the loop)
+		const parent = scopeNodes.get(env.parent.uid);
+		if (parent) { scopeNodes.set(env.uid, parent); mergedItems.set(env.uid, []); return; }
+	}
 	const node = { label: env.label, items: [], parent: itemsOf(env.parent), keys: [] };
 	node.parent.push(node);
 	scopeNodes.set(env.uid, node);
@@ -217,6 +248,17 @@ Environment.on_open = env => {
 Environment.on_close = env => {
 	const node = scopeNodes.get(env.uid);
 	if (!node) return;
+	if (mergedItems.has(env.uid)) { // take back what the body put in the loop's box
+		for (const { item, key } of mergedItems.get(env.uid)) {
+			const i = node.items.lastIndexOf(item);
+			if (i >= 0) node.items.splice(i, 1);
+			variableItems.delete(key);
+		}
+		mergedItems.delete(env.uid);
+		scopeNodes.delete(env.uid);
+		scheduleRender();
+		return;
+	}
 	node.parent.splice(node.parent.lastIndexOf(node), 1); // (it is almost always the last)
 	for (const key of node.keys) variableItems.delete(key);
 	scopeNodes.delete(env.uid);
@@ -228,7 +270,8 @@ Environment.on_define = (env, id, data) => {
 	const item = { id, data }, key = `${env.uid}/${id}`;
 	itemsOf(env).push(item);
 	variableItems.set(key, item);
-	scopeNodes.get(env.uid)?.keys.push(key);
+	if (mergedItems.has(env.uid)) mergedItems.get(env.uid).push({ item, key });
+	else scopeNodes.get(env.uid)?.keys.push(key);
 	scheduleRender();
 };
 
