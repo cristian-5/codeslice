@@ -76,7 +76,7 @@ class TypeRules {
 				// falls through
 			case "-": case "*": case "/":
 				return numbers ? { type: common(l, r), operand: common(l, r) } : null;
-			case "%": case "&": case "|":
+			case "%": case '^': case "&": case "|":
 				return isIntegral(l) && isIntegral(r) ? { type: "int", operand: "int" } : null;
 		}
 		return null;

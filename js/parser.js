@@ -68,7 +68,7 @@ class Parser {
 		while (i < code.length) {
 			switch (code[i]) {
 				case ' ': case '\t': case '\n': break;
-				case '+': case '-': case '*':
+				case '+': case '-': case '*': case '^':
 				case '%': case '=': case '(': case ')':
 				case '{': case '}': case ';': case ',':
 				case '<': case '>': case '!': case ':':
@@ -167,7 +167,7 @@ class Parser {
 			}
 			let combined = false;
 			switch (tokens[i].lexeme) {
-				case '=': case '!': case '*': case '/': case '%':
+				case '^': case '=': case '!': case '*': case '/': case '%':
 					if (tokens[i + 1].lexeme === '=') {
 						grouped.push({
 							lexeme: tokens[i].lexeme + tokens[i + 1].lexeme,
@@ -574,7 +574,7 @@ class Parser {
 	// <assignment> := <identifier> ( '=' <assignment> ) | <logic_or>
 	#assignment() {
 		let e = this.#logic_or();
-		if (this.#match("operator", [ '=', "+=", "-=", "*=", "/=", "%=" ])) {
+		if (this.#match("operator", [ '=', "+=", "-=", "*=", "/=", "%=", "^=" ])) {
 			const op = this.#previous();
 			const value = this.#assignment();
 			if (e instanceof Identifier || e instanceof Subscript)
@@ -617,10 +617,10 @@ class Parser {
 			e = new InfixExpression(e, this.#previous(), this.#factor());
 		return e;
 	}
-	// <factor> := <prefix> ( ( '*' | '/' | '%' | '&' ) <prefix> )*
+	// <factor> := <prefix> ( ( '*' | '/' | '%' | '&' | '^' ) <prefix> )*
 	#factor() {
 		let e = this.#prefix();
-		while (this.#match("operator", [ '*', '/', '%', '&' ]))
+		while (this.#match("operator", [ '*', '/', '%', '&', '^' ]))
 			e = new InfixExpression(e, this.#previous(), this.#prefix());
 		return e;
 	}

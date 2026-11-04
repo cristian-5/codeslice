@@ -402,7 +402,7 @@ class Expression extends Visitable {
 }
 
 class Assignment extends Expression {
-	static #compound = { "+=": "+", "-=": "-", "*=": "*", "/=": "/", "%=": "%" };
+	static #compound = { "+=": "+", "-=": "-", "*=": "*", "^=": "^", "/=": "/", "%=": "%" };
 	constructor(left, operator, right) {
 		super(left.start, right.end);
 		this.left = left;
@@ -462,6 +462,7 @@ class InfixExpression extends Expression {
 		"%":  (a, b) => a % b,
 		"&":  (a, b) => a & b,
 		"|":  (a, b) => a | b,
+		"^":  (a, b) => a ^ b,
 		"&&": (a, b) => a && b,
 		"||": (a, b) => a || b,
 		"==": (a, b) => a === b,
