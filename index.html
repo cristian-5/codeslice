@@ -63,12 +63,14 @@
 					const $ = id => document.getElementById(id);
 					switch (Language.current) {
 						case "IT":
+							$("save").title = "Salva";
 							$("compile").title = "Verifica";
-							$("run").title = $("run-text").innerText = "Esegui";
+							$("run-text").innerText = "Esegui";
 						break;
 						case "EN":
+							$("save").title = "Save";
 							$("compile").title = "Verify";
-							$("run").title = $("run-text").innerText = "Run";
+							$("run-text").innerText = "Run";
 						break;
 					}
 				}
