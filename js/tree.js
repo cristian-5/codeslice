@@ -659,12 +659,51 @@ class Statement extends Visitable {
 	}
 }
 
+/// The { ... } of an array declaration: int a[3] = { 1, 2, 3 }; or a matrix, a list of lists.
+/// The items are expressions or other InitLists (checked by the TypeChecker).
+class InitList extends Expression {
+	constructor(lbrace, items, rbrace) {
+		super(lbrace.position, rbrace.position + 1);
+		this.items = items;
+	}
+	/// What an element that is not in the list gets (C++ zero-initializes them).
+	static zero(base) {
+		switch (base) {
+			case "string": return "";
+			case "bool": return false;
+			default: return 0; // int, float, char
+		}
+	}
+	/// The array for `sizes` (already known) holding the items of this list, the elements
+	/// that are not listed are zero. depth is the dimension this list is the content of.
+	async build(sizes, base, depth = 0) {
+		const errors = Language.main.errors;
+		if (this.items.length > sizes[depth]) {
+			const extra = this.items[sizes[depth]];
+			throw new CodeError(errors.TMI, [ extra.start, extra.end ], [ sizes[depth] ]);
+		}
+		const last = depth === sizes.length - 1, array = new Array(sizes[depth]);
+		for (let i = 0; i < array.length; i++) {
+			const item = this.items[i];
+			if (last) array[i] = item ? (await item.evaluate()).value : InitList.zero(base);
+			else array[i] = item ? await item.build(sizes, base, depth + 1) : InitList.empty(sizes, base, depth + 1);
+		}
+		return array;
+	}
+	/// A whole (sub)array of zeros.
+	static empty(sizes, base, depth) {
+		return Array.from({ length: sizes[depth] }, () =>
+			depth === sizes.length - 1 ? InitList.zero(base) : InitList.empty(sizes, base, depth + 1));
+	}
+}
+
 class Declaration extends Statement {
 	isDeclaration = true;
 	// constToken: the "const" keyword token, or null
 	constructor(type, declarations, constToken = null) {
 		const last = declarations.top();
 		super((constToken || type).position, last.exp ? last.exp.end : (
+			last.init ? last.init.end :
 			last.sizes ? last.end : last.id.position + last.id.lexeme.length
 		));
 		this.type = type;
@@ -677,19 +716,24 @@ class Declaration extends Statement {
 			let value;
 			if (d.exp) { // assignment
 				value = (await d.exp.evaluate()).clone(); // own copy, never share another variable's Value
-				if (this.isConst) value.isConst = true;
 			} else if (d.sizes) { // array
-				const sizes = await evalAll(d.sizes);
+				// the first size may be missing (int a[] = { 1, 2 }): it is the length of the list
+				const given = await evalAll(d.sizes.filter(s => s));
+				const sizes = d.sizes.map(s => s ? given.shift() : new Value(d.init.items.length, "int"));
 				for (let i = 0; i < sizes.length; i++)
-					if (sizes[i].value <= 0)
-						throw new CodeError(Language.main.errors.AS0, [ d.sizes[i].start, d.sizes[i].end ], [ sizes[i].value ]);
+					if (sizes[i].value <= 0) {
+						const at = d.sizes[i] || d.init; // an empty list: the size is the list
+						throw new CodeError(Language.main.errors.AS0, [ at.start, at.end ], [ sizes[i].value ]);
+					}
+				const lengths = sizes.map(s => s.value);
 				value = new Value(
-					Array.make(sizes.map(s => s.value)),
-					this.typeName + sizes.map(s => `[${s.value}]`).join("")
+					d.init ? await d.init.build(lengths, this.typeName) : Array.make(lengths),
+					this.typeName + lengths.map(s => `[${s}]`).join("")
 				);
 			} else { // simple declaration
 				value = new Value(undefined, this.typeName);
 			}
+			if (this.isConst) value.isConst = true;
 			Environment.current.define(d.id, value);
 		}
 	}

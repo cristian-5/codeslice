@@ -284,10 +284,12 @@ class TypeChecker {
 	}
 
 	/// A variable declared with const cannot be assigned, incremented or read by cin.
-	#assertMutable(identifier) {
+	#assertMutable(target) {
+		const identifier = target instanceof Subscript ? target.left : target; // a[i] is a part of a
+		if (!(identifier instanceof Identifier)) return; // visitSubscript reports it
 		const info = this.#scope.resolve(identifier.name);
 		if (info instanceof VarInfo && info.isConst)
-			this.#fail("CAS", this.#range(identifier), [ identifier.name.lexeme ]);
+			this.#fail("CAS", this.#range(target), [ identifier.name.lexeme ]);
 	}
 
 	/// Visits a condition (if, while, do, for): any number can be a condition.
@@ -374,17 +376,36 @@ class TypeChecker {
 				this.#coerce(d.exp, type);
 				info = new VarInfo(type, node.isConst, node.isConst && d.exp.isConstant);
 			} else if (d.sizes) { // array
-				d.sizes.forEach(size => size.accept(this));
-				for (const size of d.sizes)
+				const sizes = d.sizes.filter(size => size); // the first one may be missing: a[] = { ... }
+				sizes.forEach(size => size.accept(this));
+				for (const size of sizes)
 					if (!size.isConstant) this.#fail("ASC", this.#range(size));
-				for (const size of d.sizes) {
+				for (const size of sizes) {
 					if (!TypeRules.isIntegral(size.valueType))
 						this.#fail("ASI", this.#range(size), [ size.valueType ]);
 					this.#coerce(size, "int");
 				}
-				info = new VarInfo(TypeRules.arrayOf(type, d.sizes.length));
+				if (d.init) this.#initializer(d.init, type, 1, d.sizes.length);
+				info = new VarInfo(TypeRules.arrayOf(type, d.sizes.length), node.isConst);
 			} else info = new VarInfo(type);
 			this.#scope.define(d.id, info);
+		}
+	}
+
+	/// The { ... } of an array: `depth` is the dimension of the list (1 for the outer one).
+	/// The lists must be nested like the dimensions, the elements must convert to the type.
+	/// How many items fit is only known when the program runs (the sizes may be const variables).
+	#initializer(list, type, depth, dimensions) {
+		for (const item of list.items) {
+			if (depth < dimensions) { // a row: it must be a list itself
+				if (!(item instanceof InitList)) this.#fail("NIL", this.#range(item));
+				this.#initializer(item, type, depth + 1, dimensions);
+			} else { // an element
+				if (item instanceof InitList) this.#fail("TMB", this.#range(item));
+				const t = item.accept(this);
+				if (!TypeRules.canConvert(t, type)) this.#fail("CST", this.#range(item), [ t, type ]);
+				this.#coerce(item, type);
+			}
 		}
 	}
 
@@ -467,7 +488,7 @@ class TypeChecker {
 	visitCin(node) {
 		if (!node.qualified) this.#scope.require(node.c);
 		for (const e of node.expressions) {
-			if (e instanceof Identifier) this.#assertMutable(e);
+			this.#assertMutable(e);
 			const t = e.accept(this);
 			if (TypeRules.isArray(t)) this.#fail("CIX", this.#range(e));
 			if (![ "int", "float", "char", "string", "bool" ].includes(t))
@@ -495,7 +516,7 @@ class TypeChecker {
 				const target = node.args[0]; // cin.get(c) writes the character in c
 				if (!(target instanceof Identifier || target instanceof Subscript))
 					this.#fail("IAT", this.#range(target));
-				if (target instanceof Identifier) this.#assertMutable(target);
+				this.#assertMutable(target);
 				return node.valueType = "bool";
 			}
 			case "ignore":
@@ -534,7 +555,7 @@ class TypeChecker {
 
 	visitAssignment(node) {
 		const target = node.left;
-		if (target instanceof Identifier) this.#assertMutable(target);
+		this.#assertMutable(target);
 		const l = target.accept(this);
 		if (TypeRules.isArray(l)) // a whole array cannot be assigned
 			this.#fail("IAT", this.#range(target));
@@ -562,7 +583,7 @@ class TypeChecker {
 		if (changes) {
 			if (!(target instanceof Identifier || target instanceof Subscript))
 				this.#fail("IAT", this.#range(target));
-			if (target instanceof Identifier) this.#assertMutable(target);
+			this.#assertMutable(target);
 		}
 		const t = target.accept(this), rule = TypeRules.prefix(op, t);
 		if (!rule) this.#fail("UPO", node.operator, [ op, t ]);
@@ -576,7 +597,7 @@ class TypeChecker {
 		const target = node.left;
 		if (!(target instanceof Identifier || target instanceof Subscript))
 			this.#fail("IAT", this.#range(target));
-		if (target instanceof Identifier) this.#assertMutable(target);
+		this.#assertMutable(target);
 		const t = target.accept(this), type = TypeRules.postfix(t);
 		if (!type) this.#fail("UPP", node.operator, [ node.operator.lexeme, t ]);
 		return node.valueType = type;
@@ -636,7 +657,7 @@ class TypeChecker {
 			const target = node.args[i];
 			if (!(target instanceof Identifier || target instanceof Subscript))
 				this.#fail("IAT", this.#range(target));
-			if (target instanceof Identifier) this.#assertMutable(target);
+			this.#assertMutable(target);
 		}
 		return node.valueType = best[0].returnType;
 	}

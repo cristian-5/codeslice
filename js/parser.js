@@ -395,28 +395,54 @@ class Parser {
 		return new Identifier(this.#qualify(parts));
 	}
 	// <declaration> := [ "const" ] <type> <partial> { ',' <partial> }
-	// <partial> := <identifier> [ { '[' <expression> ']' } | '=' <expression> ]
-	// (every <partial> of a const declaration must have an initializer)
+	// <partial> := <identifier> { '[' [ <expression> ] ']' } [ '=' ( <expression> | <initializer> ) ]
+	// (every <partial> of a const declaration must have an initializer; an array takes
+	// an <initializer> and only its first size may be left out: int a[] = { 1, 2 };)
 	#declaration() {
+		const errors = Language.main.errors;
 		const kw = this.#match("keyword", "const") ? this.#previous() : null;
 		const type = this.#consume("type");
 		function partial() {
 			const id = this.#consume("identifier");
-			if (this.#match("operator", '='))
-				return { id, exp: this.#expression() };
-			else if (kw) throw new CodeError(Language.main.errors.CNI, id, [ id.lexeme ]);
-			else if (this.#check("operator", '[')) {
-				const sizes = [];
-				while (this.#match("operator", '[')) {
-					sizes.push(this.#expression());
-					this.#consume("operator", ']');
+			const sizes = [];
+			let omitted = null; // position of the "[]" without a size
+			while (this.#match("operator", '[')) {
+				const lbracket = this.#previous();
+				if (this.#check("operator", ']')) {
+					const at = [ lbracket.position, this.#advance().position + 1 ];
+					if (sizes.length > 0) throw new CodeError(errors.ASM, at); // only the first one
+					omitted = at;
+					sizes.push(null);
+					continue;
 				}
-				return { id, exp: null, sizes, end: this.#previous().position + 1 }; // after the last ']'
-			} else return { id, exp: null };
+				sizes.push(this.#expression());
+				this.#consume("operator", ']');
+			}
+			const end = sizes.length ? this.#previous().position + 1 : null; // after the last ']'
+			let exp = null, init = null;
+			if (this.#match("operator", '=')) {
+				if (sizes.length === 0) exp = this.#expression();
+				else if (this.#check("operator", '{')) init = this.#initializer();
+				else throw new CodeError(errors.AIL, this.#peek() || this.#previous());
+			} else if (kw) throw new CodeError(errors.CNI, id, [ id.lexeme ]);
+			if (omitted && !init) throw new CodeError(errors.ASM, omitted);
+			return sizes.length ? { id, exp, sizes, init, end } : { id, exp };
 		}
 		const decls = [ partial.call(this) ];
 		while (this.#match("operator", ",")) decls.push(partial.call(this));
 		return new Declaration(type, decls, kw);
+	}
+	// <initializer> := '{' [ <item> { ',' <item> } [ ',' ] ] '}'
+	// <item> := <initializer> | <expression>
+	// A matrix is a list of lists: { { 1, 2 }, { 3, 4 } }
+	#initializer() {
+		const lbrace = this.#consume("operator", '{');
+		const items = [];
+		while (!this.#check("operator", '}') && !this.#end()) {
+			items.push(this.#check("operator", '{') ? this.#initializer() : this.#expression());
+			if (!this.#match("operator", ',')) break;
+		}
+		return new InitList(lbrace, items, this.#consume("operator", '}'));
 	}
 	// <block> := '{' { <statement> } '}'
 	#block() {

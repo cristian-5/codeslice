@@ -53,3 +53,4 @@ The language `c+-` is a dialect of `c++` with some minor differences:
 - [x] `getline(cin, s)`, `getline(cin, s, delim)`
 - [x] `cin.ignore()`, `cin.ignore(n)`, `cin.ignore(n, delim)`
 - [x] Input behaves like the standard input of C++: `cin >> s` reads one word and leaves the `'\n'` in the buffer
+- [x] Array, Matrix initializers (`int a[3] = {1, 2, 3};`, `int m[2][2] = {{1, 2}, {3, 4}};`, `int a[] = {1, 2};`, missing elements are zero, works with `const`)
